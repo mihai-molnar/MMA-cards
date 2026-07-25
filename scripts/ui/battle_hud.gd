@@ -83,12 +83,13 @@ func _build_result_panel() -> void:
 
 	_result_label = Label.new()
 	_result_label.add_theme_font_size_override("font_size", 48)
-	_result_label.position = Vector2(430, 240)
+	_result_label.position = Vector2(430, 170)
 	_result_panel.add_child(_result_label)
 
 	var restart := Button.new()
 	restart.text = "RESTART"
-	restart.position = Vector2(470, 320)
+	# Sits above the combat log (y=330); overlapping it looked unfinished.
+	restart.position = Vector2(470, 245)
 	restart.custom_minimum_size = Vector2(180, 48)
 	restart.pressed.connect(func() -> void: restart_pressed.emit())
 	_result_panel.add_child(restart)
