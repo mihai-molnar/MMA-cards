@@ -9,6 +9,14 @@ var hud: BattleHud
 var hand_view: HandView
 var screen_fx: ScreenFx
 
+## Set by _on_card_chosen just before calling battle.play_card(), which emits
+## fighters_changed synchronously -- so this is the only way _react_to_damage
+## can tell "a card is about to travel to its target" from "an enemy attack
+## landed with no card animation at all". Non-zero only for the duration of
+## that call; cleared back to 0.0 right after, so enemy turns (which never
+## touch this) always react immediately.
+var _pending_reaction_delay: float = 0.0
+
 func _ready() -> void:
 	battle = BattleState.new()
 	_build_ui()
@@ -70,18 +78,38 @@ func _on_fighters_changed() -> void:
 
 ## FighterPanel diffs hp/guard itself and records what it saw, so the whole-view
 ## reaction can be driven from that without BattleState needing a payload.
+##
+## For a played card, the card itself takes _pending_reaction_delay seconds to
+## travel to its target (see _on_card_chosen), so the reaction is deferred to
+## land with the blow instead of firing the instant the card is clicked. An
+## enemy attack has no card animation -- _pending_reaction_delay is 0.0 for
+## those, so it reacts immediately, exactly as before.
 func _react_to_damage() -> void:
 	var amount: int = hud.last_damage_amount()
 	if amount <= 0:
 		return
+	var delay: float = _pending_reaction_delay
+	if delay > 0.0 and is_inside_tree():
+		get_tree().create_timer(delay).timeout.connect(_fire_impact.bind(amount))
+	else:
+		_fire_impact(amount)
+
+func _fire_impact(amount: int) -> void:
 	screen_fx.hit_stop()
 	screen_fx.shake(Juice.screen_shake_amplitude(amount))
 	screen_fx.flash()
 
 func _on_card_chosen(index: int) -> void:
+	# battle.play_card() emits fighters_changed synchronously, before this
+	# call returns, so the delay for _react_to_damage must be armed before
+	# calling it -- there is no "after the fact" hook to detect a played card
+	# from inside the signal handler.
+	_pending_reaction_delay = Juice.ANTICIPATE_TIME + Juice.LUNGE_TIME
+	var played: bool = battle.play_card(index)
+	_pending_reaction_delay = 0.0
 	# The card only departs the hand once BattleState confirms the play; a
 	# rejected play must leave HandView untouched (see HandView.launch_play).
-	if battle.play_card(index):
+	if played:
 		hand_view.launch_play(index)
 
 func _on_end_turn_pressed() -> void:

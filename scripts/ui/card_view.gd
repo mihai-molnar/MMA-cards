@@ -126,6 +126,12 @@ func debug_tilt() -> Vector2:
 func is_lunging() -> bool:
 	return _lunging
 
+## True while a tween is actively driving target_* toward a destination.
+## Test hook: lets tests confirm an animation was actually started, rather
+## than only inspecting where target_* ends up.
+func debug_is_animating() -> bool:
+	return _tween != null and _tween.is_valid() and _tween.is_running()
+
 func _build() -> void:
 	_border = ColorRect.new()
 	_border.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -301,15 +307,22 @@ func lunge_to(anchor: Vector2) -> void:
 func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
-	target_position = p_position
-	target_rotation = p_rotation
-	target_scale = p_scale
 	if not is_inside_tree():
-		# No _process off-tree, so snap the live transform for tests.
+		# No _process off-tree, so snap immediately -- tests need this branch,
+		# and there is no tween to animate the snap away in the next frame.
+		target_position = p_position
+		target_rotation = p_rotation
+		target_scale = p_scale
 		position = p_position
 		rotation = p_rotation
 		scale = p_scale
 		return
+	# In-tree: target_* stays at its current value here and the tween below
+	# carries it to p_position/p_rotation/p_scale over Juice.HOVER_TIME. Do
+	# NOT pre-assign target_* to the destination -- that would make the tween
+	# interpolate from the destination to itself, i.e. animate nothing, and
+	# _process would compose the final pose on the very next frame instead of
+	# easing toward it.
 	_tween = Juice.spring(create_tween())
 	_tween.tween_property(self, "target_position", p_position, Juice.HOVER_TIME)
 	_tween.parallel().tween_property(self, "target_rotation", p_rotation, Juice.HOVER_TIME)
