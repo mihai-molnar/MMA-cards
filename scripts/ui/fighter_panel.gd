@@ -12,16 +12,12 @@ extends Control
 const PANEL_SIZE: Vector2 = Vector2(260, 260)
 const RECT_SIZE: Vector2 = Vector2(140, 160)
 
+## Juice has no punch-scale/time equivalent (its tuning covers spring, hover,
+## squash/stretch, shake, flash, numbers and particles, but no plain uniform
+## "punch" pulse) so these stay local rather than inventing an undocumented
+## Juice value. See the Task 6 report for detail.
 const PUNCH_SCALE: float = 1.35
 const PUNCH_TIME: float = 0.18
-const FLOAT_RISE: float = 30.0
-const FLOAT_TIME: float = 0.6
-## Height of the floating damage/guard number. Also used to derive its start
-## position (see _float_number), so the two stay in sync instead of drifting
-## into an overlap with _status_label the way separately-chosen numbers did.
-const FLOAT_HEIGHT: float = 28.0
-const SHAKE_TIME: float = 0.2
-const SHAKE_STEPS: int = 4
 
 const DAMAGE_FLASH: Color = Color(1.0, 0.35, 0.35)
 const GUARD_FLASH: Color = Color(0.55, 0.85, 1.0)
@@ -55,10 +51,10 @@ func _init() -> void:
 	size = PANEL_SIZE
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-## Damage shake amplitude in pixels. Scales with the hit so a 16 damage combo
-## lands harder than a 6 damage jab, clamped so neither extreme looks silly.
+## Delegates to Juice so every tuning value lives in one file. Kept as a static
+## on FighterPanel because tests and callers already reference it here.
 static func shake_amplitude(amount: int) -> float:
-	return clampf(2.0 + amount / 3.0, 3.0, 10.0)
+	return Juice.rect_shake_amplitude(amount)
 
 func _build(display_name: String, rect_color: Color) -> void:
 	_rect = ColorRect.new()
@@ -162,6 +158,8 @@ func _pulse_damage(amount: int) -> void:
 	_punch(_hp_label, DAMAGE_FLASH)
 	_float_number("-%d" % amount, DAMAGE_FLASH)
 	_shake(shake_amplitude(amount))
+	_flash_rect(DAMAGE_FLASH)
+	ParticleBurst.spawn(self, _rect_home + RECT_SIZE / 2.0, DAMAGE_FLASH, Juice.PARTICLES_HIT)
 
 func _pulse_guard(amount: int) -> void:
 	if not is_inside_tree():
@@ -180,31 +178,47 @@ func _punch(label: Label, flash: Color) -> void:
 func _label_rest_color(label: Label) -> Color:
 	return STATUS_COLOR if label == _status_label else Color.WHITE
 
-func _float_number(text: String, color: Color) -> void:
+## A damage number that arcs and tumbles rather than drifting straight up --
+## motion with a direction reads as thrown, not faded.
+func _float_number(text: String, colour: Color) -> void:
 	var floater := Label.new()
 	floater.text = text
-	floater.add_theme_font_size_override("font_size", 20)
-	floater.modulate = color
-	# Starts flush above the HP row and rises from there (see FLOAT_RISE), so
-	# it never reaches down into _status_label directly below the HP row --
-	# unlike the old fixed offset, which placed it mid-way through the status
-	# text.
-	floater.position = _hp_label.position - Vector2(0.0, FLOAT_HEIGHT)
-	floater.size = Vector2(PANEL_SIZE.x, FLOAT_HEIGHT)
+	floater.add_theme_font_size_override("font_size", 22)
+	floater.modulate = colour
+	floater.position = _hp_label.position - Vector2(0.0, Juice.NUMBER_RISE * 0.4)
+	floater.size = Vector2(PANEL_SIZE.x, 28.0)
 	floater.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
 	floater.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	floater.pivot_offset = floater.size / 2.0
 	add_child(floater)
 
+	# Arc away from the fighter's own side, so the two panels throw numbers
+	# outward rather than both drifting the same way.
+	var arc_x: float = Juice.NUMBER_ARC_X if align_right else -Juice.NUMBER_ARC_X
+	var landing: Vector2 = floater.position + Vector2(arc_x, -Juice.NUMBER_RISE)
+
 	var tween := create_tween()
-	tween.tween_property(floater, "position",
-		floater.position - Vector2(0.0, FLOAT_RISE), FLOAT_TIME)
-	tween.parallel().tween_property(floater, "modulate:a", 0.0, FLOAT_TIME)
+	tween.tween_property(floater, "position", landing, Juice.NUMBER_TIME) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(floater, "rotation",
+		deg_to_rad(Juice.NUMBER_SPIN_DEG if align_right else -Juice.NUMBER_SPIN_DEG),
+		Juice.NUMBER_TIME)
+	tween.parallel().tween_property(floater, "modulate:a", 0.0, Juice.NUMBER_TIME)
 	tween.chain().tween_callback(floater.queue_free)
 
-func _shake(amplitude: float) -> void:
-	var step_time: float = SHAKE_TIME / float(SHAKE_STEPS + 1)
+## Hard flash on the struck fighter's rectangle, then back to its own colour.
+func _flash_rect(colour: Color) -> void:
+	if not is_inside_tree():
+		return
+	var home: Color = _rect.color
 	var tween := create_tween()
-	for i: int in range(SHAKE_STEPS):
+	tween.tween_property(_rect, "color", colour, Juice.FLASH_TIME * 0.35)
+	tween.tween_property(_rect, "color", home, Juice.FLASH_TIME)
+
+func _shake(amplitude: float) -> void:
+	var step_time: float = Juice.SHAKE_TIME / float(Juice.SHAKE_STEPS + 1)
+	var tween := create_tween()
+	for i: int in range(Juice.SHAKE_STEPS):
 		var direction: float = -1.0 if i % 2 == 0 else 1.0
 		tween.tween_property(_rect, "position",
 			_rect_home + Vector2(direction * amplitude, 0.0), step_time)
