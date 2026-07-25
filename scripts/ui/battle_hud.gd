@@ -10,7 +10,10 @@ signal restart_pressed()
 
 const PLAYER_COLOR: Color = Color(0.20, 0.40, 0.85)
 const ENEMY_COLOR: Color = Color(0.85, 0.25, 0.25)
-const LOG_LINES: int = 5
+## 4, not 5: the log sits at y=300, and a hovered centre card's top edge
+## reaches ≈368 (see HandView.HAND_BASE_Y). 5 lines pushed the log's last
+## line or two under that card; 4 keeps the whole log clear of it.
+const LOG_LINES: int = 4
 
 ## z_index lifts a node above its parent's later siblings, so the banner must
 ## outrank a hovered (50) or lunging (60) card or they redraw over it.
@@ -132,6 +135,17 @@ func enemy_centre() -> Vector2:
 ## Anchor a played Block card pulls back toward.
 func player_centre() -> Vector2:
 	return _player_panel.centre_point()
+
+## Pass-throughs so BattleView can mark the next fighters_changed update as a
+## guard expiry rather than an absorption (see FighterPanel.
+## suppress_next_guard_pulse). Kept per-panel: the player's legitimate absorb
+## pulse can land on the same fighters_changed as the enemy's expiry, so a
+## single global flag would wrongly swallow it too.
+func suppress_player_guard_pulse() -> void:
+	_player_panel.suppress_next_guard_pulse()
+
+func suppress_enemy_guard_pulse() -> void:
+	_enemy_panel.suppress_next_guard_pulse()
 
 func append_log(line: String) -> void:
 	_log_lines.append(line)

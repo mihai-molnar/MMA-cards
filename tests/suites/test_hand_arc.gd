@@ -8,6 +8,8 @@ func run(t: TestRunner) -> void:
 	_test_empty_hand(t)
 	_test_clear_of_end_turn_button(t)
 	_test_clear_hover(t)
+	_test_layout_invariants_across_hand_sizes(t)
+	_test_hand_size_ceiling(t)
 
 func _hand_with(ids: Array) -> HandView:
 	var battle := BattleState.new(12345)
@@ -83,3 +85,43 @@ func _test_clear_hover(t: TestRunner) -> void:
 	view.clear_hover()
 	t.check(not card.is_card_hovered(), "clear_hover drops every card back to rest")
 	view.free()
+
+## right_edge = 636 + 50 * (n - 1): clearance of the End Turn button (x=900)
+## holds only up to n=6 (886, 14px slack); n=7 would reach 936 and overlap it.
+## Both invariants below are asserted across every hand size the game can
+## actually deal, not just the five-card case above, so a future change to
+## HAND_SIZE or the arc constants trips a test instead of silently breaking
+## End Turn or clipping the bottom of the design space.
+func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
+	var pool: Array[StringName] = [
+		&"jab", &"straight", &"jab", &"block", &"straight", &"jab"
+	]
+	for n: int in range(1, 7):
+		var ids: Array = pool.slice(0, n)
+		var view: HandView = _hand_with(ids)
+		t.check_eq(view.get_child_count(), n, "hand of %d builds %d cards" % [n, n])
+
+		var rightmost: CardView = view.get_child(n - 1) as CardView
+		var right_edge: float = rightmost.rest_position.x + CardView.CARD_SIZE.x
+		t.check(right_edge < 900.0,
+			"hand of %d clears the End Turn button (right edge %f)" % [n, right_edge])
+
+		# Regression guard for the bottom-clip fix: a card's rotated bottom
+		# corner (approximated using the maximum fan angle) must stay inside
+		# the 648-tall design space. This fails if HAND_BASE_Y, FAN_ARCH_HEIGHT
+		# or MAX_FAN_ANGLE_DEG changes in a way that pushes cards too low.
+		for index: int in range(n):
+			var card: CardView = view.get_child(index) as CardView
+			var bottom_y: float = card.rest_position.y + CardView.CARD_SIZE.y \
+				+ (CardView.CARD_SIZE.x / 2.0) * sin(deg_to_rad(HandView.MAX_FAN_ANGLE_DEG))
+			t.check(bottom_y <= 648.0,
+				"hand of %d card %d stays inside the design space (bottom %f)" % [n, index, bottom_y])
+		view.free()
+
+## Raising HAND_SIZE past 6 would silently break End Turn (see
+## _test_layout_invariants_across_hand_sizes) because the fan's clearance
+## arithmetic only holds through n=6. This turns that into a loud test
+## failure instead.
+func _test_hand_size_ceiling(t: TestRunner) -> void:
+	t.check(BattleConfig.HAND_SIZE <= 6,
+		"HAND_SIZE must stay <= 6 -- the fan only clears the End Turn button up to 6 cards")

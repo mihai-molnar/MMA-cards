@@ -19,6 +19,13 @@ const HAND_BASE_Y: float = 430.0
 var _attack_anchor: Vector2 = Vector2(1000.0, 170.0)
 var _defend_anchor: Vector2 = Vector2(130.0, 170.0)
 
+## Set while a click is being resolved: the card has been pulled out of the
+## hand and is waiting to hear whether the play landed. launch_play() claims
+## it to send it flying; if nothing has claimed it by the time
+## _on_card_selected returns, the play was rejected and the card is put back.
+var _pending_view: CardView = null
+var _pending_index: int = -1
+
 func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	# Ignore input itself so clicks fall through to the cards.
@@ -78,24 +85,60 @@ func clear_hover() -> void:
 			view.apply_hover(false)
 
 ## A disabled Button emits no `pressed` signal, and set_affordable() mirrors
-## battle.can_play(), so only legal plays reach here. Do NOT add a rules check —
-## that would put game logic in the view.
+## battle.can_play(), so today every click that reaches here is legal. Even
+## so, the card does not depart until BattleView confirms play_card()
+## accepted it (see launch_play) -- Do NOT add a rules check here. HandView
+## still does not decide legality, it only waits to be told the outcome.
 func _on_card_selected(index: int, view: CardView) -> void:
-	_launch(view)
+	_hand_off(view, index)
 	card_chosen.emit(index)
+	# card_chosen is handled synchronously: if a confirmed play were coming,
+	# launch_play() would already have claimed _pending_view above. Nothing
+	# claiming it means the play was rejected, so put the card back.
+	if _pending_view != null:
+		_return_pending()
 
-## Reparents the card out of the hand before animating it. Two reasons: the
-## rebuild triggered by playing it would otherwise free the node mid-tween, and
-## HandView's children must stay exactly equal to the cards in hand.
-func _launch(view: CardView) -> void:
+## Pulls the card out of the hand and marks it pending, before the model
+## update a confirmed play would trigger. Two reasons: hand_changed fires
+## synchronously from inside battle.play_card() and would free an in-place
+## child mid-tween, and HandView's children must stay exactly equal to the
+## cards in hand. Nothing is animated yet -- that only happens if
+## launch_play() claims this card below.
+func _hand_off(view: CardView, index: int) -> void:
 	var host: Node = get_parent()
 	if host == null:
 		return
-	var anchor: Vector2 = _attack_anchor
-	if view.card != null and view.card.has_tag(&"defense"):
-		anchor = _defend_anchor
 	var handover_position: Vector2 = view.position + position
 	remove_child(view)
 	host.add_child(view)
 	view.position = handover_position
+	_pending_view = view
+	_pending_index = index
+
+## Called by BattleView once battle.play_card(index) has returned true. Only
+## now does the card actually leave -- a rejected play never reaches here, so
+## the lunge animation never runs for it.
+func launch_play(index: int) -> void:
+	if _pending_view == null or _pending_index != index:
+		return
+	var view: CardView = _pending_view
+	_pending_view = null
+	_pending_index = -1
+	var anchor: Vector2 = _attack_anchor
+	if view.card != null and view.card.has_tag(&"defense"):
+		anchor = _defend_anchor
 	view.lunge_to(anchor)
+
+## The play was rejected: put the card back exactly where it was, including
+## its original position among its siblings.
+func _return_pending() -> void:
+	var view: CardView = _pending_view
+	var index: int = _pending_index
+	_pending_view = null
+	_pending_index = -1
+	var host: Node = get_parent()
+	if host != null:
+		host.remove_child(view)
+	add_child(view)
+	move_child(view, index)
+	view.set_rest_transform(view.rest_position, view.rest_rotation, view.rest_z_index)

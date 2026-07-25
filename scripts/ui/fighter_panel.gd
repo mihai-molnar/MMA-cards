@@ -16,6 +16,10 @@ const PUNCH_SCALE: float = 1.35
 const PUNCH_TIME: float = 0.18
 const FLOAT_RISE: float = 30.0
 const FLOAT_TIME: float = 0.6
+## Height of the floating damage/guard number. Also used to derive its start
+## position (see _float_number), so the two stay in sync instead of drifting
+## into an overlap with _status_label the way separately-chosen numbers did.
+const FLOAT_HEIGHT: float = 28.0
 const SHAKE_TIME: float = 0.2
 const SHAKE_STEPS: int = 4
 
@@ -38,6 +42,7 @@ var _rect_home: Vector2 = Vector2.ZERO
 
 var _last_hp: int = -1
 var _last_guard: int = 0
+var _suppress_guard_pulse: bool = false
 
 static func create(display_name: String, rect_color: Color, p_align_right: bool) -> FighterPanel:
 	var panel := FighterPanel.new()
@@ -64,15 +69,18 @@ func _build(display_name: String, rect_color: Color) -> void:
 	_rect_home = _rect.position
 	add_child(_rect)
 
-	# The fighter's name sits inside its rectangle, centred.
+	# The fighter's name sits inside its rectangle, centred, and is parented to
+	# the rectangle itself (not a FighterPanel sibling) so the damage shake --
+	# which tweens `_rect.position` -- carries the name along with it instead
+	# of leaving it behind mid-hit. Position is therefore rect-relative.
 	_name_label = Label.new()
 	_name_label.text = display_name.to_upper()
 	_name_label.add_theme_font_size_override("font_size", 16)
 	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_name_label.position = _rect_home + Vector2(0.0, RECT_SIZE.y / 2.0 - 12.0)
+	_name_label.position = Vector2(0.0, RECT_SIZE.y / 2.0 - 12.0)
 	_name_label.size = Vector2(RECT_SIZE.x, 24.0)
 	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_name_label)
+	_rect.add_child(_name_label)
 
 	_hp_label = _make_row_label(22, RECT_SIZE.y + 12.0)
 	_status_label = _make_row_label(16, RECT_SIZE.y + 44.0)
@@ -107,6 +115,17 @@ func update(fighter: Fighter) -> void:
 	_last_hp = fighter.hp
 	_last_guard = fighter.guard
 
+	# Guard also clears at its owner's turn start (expiry), which looks
+	# identical to absorption in this diff. suppress_next_guard_pulse() marks
+	# the next update as an expiry so it doesn't misreport as "Block worked".
+	# Only a `&"guard"` result is affected, and the flag always clears after
+	# this one update so it cannot leak into a later, genuine absorb.
+	if _suppress_guard_pulse:
+		if kind == &"guard":
+			kind = &"none"
+			amount = 0
+		_suppress_guard_pulse = false
+
 	debug_last_pulse_kind = kind
 	debug_last_pulse_amount = amount
 
@@ -114,6 +133,12 @@ func update(fighter: Fighter) -> void:
 		_pulse_damage(amount)
 	elif kind == &"guard":
 		_pulse_guard(amount)
+
+## Call before a model update that is expected to clear guard through expiry
+## rather than absorption. Guard expires at its owner's turn start, which is
+## indistinguishable from absorption in an hp/guard diff.
+func suppress_next_guard_pulse() -> void:
+	_suppress_guard_pulse = true
 
 ## Guard and statuses, omitted entirely when zero.
 func _status_line(fighter: Fighter) -> String:
@@ -160,8 +185,12 @@ func _float_number(text: String, color: Color) -> void:
 	floater.text = text
 	floater.add_theme_font_size_override("font_size", 20)
 	floater.modulate = color
-	floater.position = _hp_label.position + Vector2(0.0, 26.0)
-	floater.size = Vector2(PANEL_SIZE.x, 28.0)
+	# Starts flush above the HP row and rises from there (see FLOAT_RISE), so
+	# it never reaches down into _status_label directly below the HP row --
+	# unlike the old fixed offset, which placed it mid-way through the status
+	# text.
+	floater.position = _hp_label.position - Vector2(0.0, FLOAT_HEIGHT)
+	floater.size = Vector2(PANEL_SIZE.x, FLOAT_HEIGHT)
 	floater.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
 	floater.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(floater)

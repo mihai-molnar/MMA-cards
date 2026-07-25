@@ -39,6 +39,11 @@ var target_position: Vector2 = Vector2.ZERO
 var target_rotation: float = 0.0
 var target_scale: Vector2 = Vector2.ONE
 
+## The anchor most recently passed to lunge_to(). Test hook, set before the
+## is_inside_tree() guard so it is observable even though tests instantiate
+## cards detached and never see the tween itself run.
+var debug_last_lunge_anchor: Vector2 = Vector2.ZERO
+
 var _hovered: bool = false
 var _tween: Tween
 
@@ -205,6 +210,14 @@ func apply_hover(value: bool) -> void:
 ## The played-card animation. The card must already have been reparented out of
 ## HandView, or the imminent rebuild will free it mid-tween.
 func lunge_to(anchor: Vector2) -> void:
+	debug_last_lunge_anchor = anchor
+	# A hover tween (started by apply_hover, e.g. from clicking a hovered
+	# card) is very likely still live at this point. Without killing it here,
+	# remove_child/add_child during the reparent that precedes this call
+	# pauses then resumes it, and it would keep driving position/rotation/
+	# scale alongside the lunge tween below.
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
 	z_index = LUNGE_Z
 	disabled = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -222,13 +235,16 @@ func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> vo
 	target_position = p_position
 	target_rotation = p_rotation
 	target_scale = p_scale
+	# Kill any live tween before either branch below: the out-of-tree path
+	# used to skip this, so a tween started while the card was in the tree
+	# (e.g. a hover) could keep running and later fight a fresh one.
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
 	if not is_inside_tree():
 		position = p_position
 		rotation = p_rotation
 		scale = p_scale
 		return
-	if _tween != null and _tween.is_valid():
-		_tween.kill()
 	_tween = create_tween()
 	_tween.tween_property(self, "position", p_position, HOVER_TIME)
 	_tween.parallel().tween_property(self, "rotation", p_rotation, HOVER_TIME)

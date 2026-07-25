@@ -123,19 +123,37 @@ game balance.
 | `FAN_ARCH_HEIGHT` | 20.0 |
 | `CARD_STEP_X` | 100.0 |
 | `HAND_CENTRE_X` | 576.0 |
-| `HAND_BASE_Y` | 470.0 |
+| `HAND_BASE_Y` | 430.0 |
 | `HOVER_LIFT` | 28.0 |
 | `HOVER_SCALE` | 1.08 |
 | `HOVER_TIME` | 0.12 |
+| `BORDER_WIDTH` | 3.0 |
+| `BORDER_COLOR` | `Color(0.05, 0.05, 0.07)` |
 | `LUNGE_TIME` | 0.28 |
 | `LUNGE_SCALE` | 1.15 |
+| `LUNGE_Z` | 60 |
 | `PUNCH_SCALE` | 1.35 |
 | `PUNCH_TIME` | 0.18 |
 | `FLOAT_RISE` | 30.0 |
 | `FLOAT_TIME` | 0.6 |
 | `SHAKE_TIME` | 0.2 |
+| `SHAKE_STEPS` | 4 |
 | `HOVER_Z` | 50 |
 | `RESULT_PANEL_Z` | 100 |
+
+`HAND_BASE_Y` moved from its original 470 to 430 during implementation, to
+fix a bottom-clip bug (the fanned cards' lowest rotated corner overran the
+648-tall design space). `BORDER_WIDTH`/`BORDER_COLOR` (card border, added so
+overlapping same-coloured cards read as separate cards rather than fusing
+into one shape) and `LUNGE_Z`/`SHAKE_STEPS` were added during implementation
+and were missing from this table entirely.
+
+**Hand-size ceiling:** the arc arithmetic's clearance of the End Turn button
+(`right_edge = 636 + 50 × (n − 1)` against the button's left edge at x=900)
+only holds for hand sizes **n ≤ 6** (14px of slack at n=6; n=7 overlaps the
+button). `tests/suites/test_hand_arc.gd` asserts `BattleConfig.HAND_SIZE <= 6`
+for exactly this reason -- raising it must trip that test rather than
+silently letting a card eat End Turn's clicks.
 
 ## Hover
 
