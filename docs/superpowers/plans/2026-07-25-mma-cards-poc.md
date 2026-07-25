@@ -757,9 +757,10 @@ func _test_strength_applied(t: TestRunner) -> void:
 	var pair2: Array = _make_pair()
 	var player2: Fighter = pair2[0]
 	var enemy2: Fighter = pair2[1]
+	enemy2.statuses.apply(StrengthStatus.ID, 2, 2)
 	player2.add_guard(5)
 	Combat.resolve_damage(8, enemy2, player2)
-	t.check_eq(player2.hp, 43, "guard 5 vs unbuffed 8 leaves 3 through")
+	t.check_eq(player2.hp, 43, "guard 5 vs buffed 12 leaves 7 through")
 
 func _test_clamping(t: TestRunner) -> void:
 	var pair: Array = _make_pair()
