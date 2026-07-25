@@ -47,6 +47,12 @@
 - Balance constants live only in `scripts/core/battle_config.gd`. No magic numbers elsewhere.
 - Use Godot 4 integer helpers: `mini()`, `maxi()`, `floori()` — not `min()`/`max()`/`floor()` where ints are intended.
 - UI text is ASCII only. Godot's default font does not render `⚔`/`🛡`/`↑`; use `ATTACK 12`, `BLOCK 8`, `BUFF +2 STR`.
+- **Commit Godot's `.uid` sidecars.** Godot 4.4+ writes a `<name>.gd.uid` beside
+  every script when it imports. These are project assets, not build artifacts —
+  stage with `git add -A` rather than naming files individually, so none are left
+  untracked. Partial `.uid` commits have twice blocked worktree merges in this
+  project; a `.uid` present in one branch but untracked in another aborts the
+  merge outright.
 - Commit after every task.
 
 ## Spec Reference
