@@ -1,12 +1,15 @@
 extends SceneTree
 class_name TestRunner
 
-## Headless test runner. Add new suites to SUITES.
-## Run: godot --headless --path . --script res://tests/run_tests.gd
+## Headless test runner. Auto-discovers suites: any res://tests/suites/test_*.gd
+## file is picked up and run, in sorted order — no registration step.
+## Preferred entry point: tests/run_tests.sh (also catches runtime script
+## errors, which this script alone cannot: GDScript has no catchable
+## exceptions, so a runtime error inside a suite's run() silently aborts
+## just that suite without failing the run).
+## Direct invocation: godot --headless --path . --script res://tests/run_tests.gd
 
-const SUITES: Array[String] = [
-	"res://tests/suites/test_harness.gd",
-]
+const SUITES_DIR: String = "res://tests/suites"
 
 var _checks: int = 0
 var _failures: Array[String] = []
@@ -27,8 +30,23 @@ func _record_failure(message: String) -> void:
 	_failures.append(line)
 	print("  FAIL: %s" % line)
 
+func _discover_suites() -> Array[String]:
+	var suite_paths: Array[String] = []
+	var file_names: PackedStringArray = DirAccess.get_files_at(SUITES_DIR)
+	for file_name: String in file_names:
+		if file_name.begins_with("test_") and file_name.ends_with(".gd"):
+			suite_paths.append("%s/%s" % [SUITES_DIR, file_name])
+	suite_paths.sort()
+	return suite_paths
+
 func _initialize() -> void:
-	for suite_path: String in SUITES:
+	var suite_paths: Array[String] = _discover_suites()
+
+	if suite_paths.is_empty():
+		_current_suite = "discovery"
+		_record_failure("No suite files found in %s (expected test_*.gd)" % SUITES_DIR)
+
+	for suite_path: String in suite_paths:
 		_current_suite = suite_path.get_file().get_basename()
 		print("Running %s" % _current_suite)
 		var script: GDScript = load(suite_path)
