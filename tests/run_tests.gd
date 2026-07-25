@@ -1,9 +1,10 @@
 extends SceneTree
+class_name TestRunner
 
 ## Headless test runner. Add new suites to SUITES.
 ## Run: godot --headless --path . --script res://tests/run_tests.gd
 
-const SUITES: Array = [
+const SUITES: Array[String] = [
 	"res://tests/suites/test_harness.gd",
 ]
 
@@ -31,7 +32,13 @@ func _initialize() -> void:
 		_current_suite = suite_path.get_file().get_basename()
 		print("Running %s" % _current_suite)
 		var script: GDScript = load(suite_path)
+		if script == null or not script.can_instantiate():
+			_record_failure("Failed to load suite script: %s" % suite_path)
+			continue
 		var suite: RefCounted = script.new()
+		if not suite.has_method("run"):
+			_record_failure("Suite has no run() method: %s" % suite_path)
+			continue
 		suite.run(self)
 
 	print("\n%d checks, %d failures" % [_checks, _failures.size()])
