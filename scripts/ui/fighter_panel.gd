@@ -12,13 +12,6 @@ extends Control
 const PANEL_SIZE: Vector2 = Vector2(260, 260)
 const RECT_SIZE: Vector2 = Vector2(140, 160)
 
-## Juice has no punch-scale/time equivalent (its tuning covers spring, hover,
-## squash/stretch, shake, flash, numbers and particles, but no plain uniform
-## "punch" pulse) so these stay local rather than inventing an undocumented
-## Juice value. See the Task 6 report for detail.
-const PUNCH_SCALE: float = 1.35
-const PUNCH_TIME: float = 0.18
-
 const DAMAGE_FLASH: Color = Color(1.0, 0.35, 0.35)
 const GUARD_FLASH: Color = Color(0.55, 0.85, 1.0)
 const STATUS_COLOR: Color = Color(1.0, 0.82, 0.40)
@@ -170,10 +163,10 @@ func _pulse_guard(amount: int) -> void:
 func _punch(label: Label, flash: Color) -> void:
 	label.pivot_offset = label.size / 2.0
 	var tween := create_tween()
-	tween.tween_property(label, "scale", Vector2.ONE * PUNCH_SCALE, PUNCH_TIME * 0.4)
-	tween.parallel().tween_property(label, "modulate", flash, PUNCH_TIME * 0.4)
-	tween.tween_property(label, "scale", Vector2.ONE, PUNCH_TIME * 0.6)
-	tween.parallel().tween_property(label, "modulate", _label_rest_color(label), PUNCH_TIME * 0.6)
+	tween.tween_property(label, "scale", Vector2.ONE * Juice.PUNCH_SCALE, Juice.PUNCH_TIME * 0.4)
+	tween.parallel().tween_property(label, "modulate", flash, Juice.PUNCH_TIME * 0.4)
+	tween.tween_property(label, "scale", Vector2.ONE, Juice.PUNCH_TIME * 0.6)
+	tween.parallel().tween_property(label, "modulate", _label_rest_color(label), Juice.PUNCH_TIME * 0.6)
 
 func _label_rest_color(label: Label) -> Color:
 	return STATUS_COLOR if label == _status_label else Color.WHITE

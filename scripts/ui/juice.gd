@@ -54,6 +54,10 @@ const SHAKE_MAX: float = 22.0
 const FLASH_TIME: float = 0.11
 const FLASH_STRENGTH: float = 0.30
 
+# --- Punch (scale-punch on HP text after damage) -------------------------
+const PUNCH_SCALE: float = 1.35
+const PUNCH_TIME: float = 0.18
+
 # --- Idle sway -----------------------------------------------------------
 ## Small on purpose: cards carry five lines of rules text, and a large wobble
 ## would blur it. Enough to feel alive, not enough to fight legibility.
