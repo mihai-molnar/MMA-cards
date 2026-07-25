@@ -128,6 +128,14 @@ func update_fighters(battle: BattleState) -> void:
 		battle.deck.draw_pile.size(), battle.deck.discard_pile.size()
 	]
 
+## The larger of the two panels' most recent damage pulses, or 0 if neither
+## took damage. Lets the view react to a hit without BattleState carrying a
+## damage payload.
+func last_damage_amount() -> int:
+	var player_hit: int = _player_panel.debug_last_pulse_amount if _player_panel.debug_last_pulse_kind == &"damage" else 0
+	var enemy_hit: int = _enemy_panel.debug_last_pulse_amount if _enemy_panel.debug_last_pulse_kind == &"damage" else 0
+	return maxi(player_hit, enemy_hit)
+
 ## Anchor a played attack card flies toward.
 func enemy_centre() -> Vector2:
 	return _enemy_panel.centre_point()
