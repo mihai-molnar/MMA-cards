@@ -6,7 +6,7 @@ extends Button
 
 signal card_selected(view: CardView)
 
-const CARD_SIZE: Vector2 = Vector2(120, 170)
+const CARD_SIZE: Vector2 = Vector2(120, 180)
 const ATTACK_COLOR: Color = Color(0.32, 0.16, 0.16)
 const DEFENSE_COLOR: Color = Color(0.16, 0.20, 0.32)
 const COMBO_BORDER_COLOR: Color = Color(1.0, 0.80, 0.20)
@@ -54,9 +54,14 @@ var _lunging: bool = false
 
 var _border: ColorRect
 var _background: ColorRect
+var _art: TextureRect
 var _name_label: Label
 var _cost_label: Label
 var _text_label: Label
+
+## True once configure() has found real art for the current card. Set by
+## _apply_art(); read by set_combo_armed() to pick which layer to tint.
+var _has_art: bool = false
 
 static func create(p_card: CardData) -> CardView:
 	var view := CardView.new()
@@ -148,6 +153,19 @@ func _build() -> void:
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background)
 
+	# Filled in by configure() when CardArt.texture_for() finds a matching
+	# PNG. KEEP_ASPECT_COVERED plus EXPAND_IGNORE_SIZE fills the card rect
+	# without letting the texture's own size push CardView bigger than
+	# CARD_SIZE -- clip_contents (set in _init) crops any overflow, though
+	# the art's 2:3 aspect already matches CARD_SIZE's, so there is none.
+	_art = TextureRect.new()
+	_art.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_art.visible = false
+	add_child(_art)
+
 	var column := VBoxContainer.new()
 	column.set_anchors_preset(Control.PRESET_FULL_RECT)
 	column.offset_left = 8
@@ -186,11 +204,33 @@ func configure(p_card: CardData) -> void:
 	card = p_card
 	if card == null:
 		return
+	# Labels are always populated, even when art hides them -- debug_text()
+	# must keep reporting something real either way (see its own doc comment).
 	_name_label.text = card.display_name
 	_cost_label.text = "%d AP" % card.cost
 	_text_label.text = _rules_text()
 	_background.color = DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
+	_apply_art()
 	set_combo_armed(false)
+
+## Looks up art for the current card and switches appearance accordingly.
+## When art exists: shows it filling the rect and hides the name, cost and
+## rules-text labels plus the coloured background and border -- all four
+## are either baked into the image or replaced by its own gold frame, and
+## would otherwise double up or peek out from behind the art.
+## When it does not: leaves the original rectangle-and-labels look exactly
+## as it was, which keeps this a real (visibly different) fallback rather
+## than a silent no-op.
+func _apply_art() -> void:
+	var texture: Texture2D = CardArt.texture_for(card.id)
+	_has_art = texture != null
+	_art.texture = texture
+	_art.visible = _has_art
+	_border.visible = not _has_art
+	_background.visible = not _has_art
+	_name_label.visible = not _has_art
+	_cost_label.visible = not _has_art
+	_text_label.visible = not _has_art
 
 func _rules_text() -> String:
 	if not card.rules_text.is_empty():
@@ -212,16 +252,29 @@ func _base_color() -> Color:
 		return ATTACK_COLOR
 	return DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
 
-## Idempotent: always computed from the base color, so calling this N times
-## with the same value equals calling it once. refresh_states() calls this
-## once per model event, so drifting from repeated lerps would compound.
+## Idempotent: always computed from a fixed base value (the background's
+## base color, or Color.WHITE for the art) -- never lerped from whatever the
+## target is currently holding -- so calling this N times with the same
+## value equals calling it once. refresh_states() calls this once per model
+## event; lerping from the live value is exactly the bug ("progressive gold
+## drift on repeated refreshes") that shipped once already and must not
+## return (see test_card_view.gd's idempotency checks).
+##
+## With art, the coloured background is hidden (see _apply_art), so the
+## highlight retargets to a modulate tint on the art itself instead. Tinting
+## modulate's RGB only (alpha stays 1.0) keeps this composing correctly with
+## set_affordable(false), which dims via modulate.a on the whole Button --
+## Godot multiplies a child's modulate into its parent's when drawing, so
+## the two effects combine automatically rather than fighting over one value.
 func set_combo_armed(value: bool) -> void:
 	if value:
 		add_theme_constant_override("outline_size", 3)
-		_background.color = _base_color().lerp(COMBO_BORDER_COLOR, 0.25)
 	else:
 		remove_theme_constant_override("outline_size")
-		_background.color = _base_color()
+	if _has_art:
+		_art.modulate = Color.WHITE.lerp(COMBO_BORDER_COLOR, 0.25) if value else Color.WHITE
+	else:
+		_background.color = _base_color().lerp(COMBO_BORDER_COLOR, 0.25) if value else _base_color()
 
 ## Everything the card displays, for tests.
 func debug_text() -> String:

@@ -10,7 +10,18 @@ signal card_chosen(index: int)
 const MAX_FAN_ANGLE_DEG: float = 12.0
 const FAN_ARCH_HEIGHT: float = 20.0
 ## Less than CARD_SIZE.x, so cards overlap slightly like a real fan.
-const CARD_STEP_X: float = 100.0
+##
+## Chosen from the art's own margins, not CARD_SIZE.x: the card images carry
+## a wide transparent glow border, so the *visible* card body is narrower
+## than the 120px CardView rect. Measured across all three source images the
+## solid body spans ~852 of 1024px width, i.e. ~83% (x[85..937] for
+## card_jab.png, similar for the other two). At CARD_SIZE.x = 120 that is a
+## visible body of 120 * (852.0 / 1024.0) ≈ 99.8px. A step of 100 (the old
+## value, sized for the full 120px rect) would put those visible bodies
+## edge-to-edge with ~0px overlap -- the fan would read as a gappy row. This
+## value instead overlaps the visible bodies by 99.8 - 86 ≈ 13.8px, inside
+## the 12-15px target.
+const CARD_STEP_X: float = 86.0
 const HAND_CENTRE_X: float = 576.0
 const HAND_BASE_Y: float = 430.0
 
