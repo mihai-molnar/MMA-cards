@@ -35,7 +35,12 @@ func set_lunge_anchors(attack_anchor: Vector2, defend_anchor: Vector2) -> void:
 	_attack_anchor = attack_anchor
 	_defend_anchor = defend_anchor
 
-func rebuild(battle: BattleState) -> void:
+## `deal` is true only when a genuinely new hand has arrived (BattleView passes
+## it on turn_started). An ordinary hand_changed rebuild -- e.g. after playing
+## a single card -- must default to false: without that, every play rebuilds
+## the whole hand and dealt every remaining card in again, dropping it off the
+## bottom of the screen and flying it back for a card that never left.
+func rebuild(battle: BattleState, deal: bool = false) -> void:
 	for child: Node in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -49,7 +54,8 @@ func rebuild(battle: BattleState) -> void:
 
 	layout_cards()
 	refresh_states(battle)
-	deal_in()
+	if deal:
+		deal_in()
 
 ## Fans the children along an arc. Derived purely from index and count, so
 ## calling it repeatedly is idempotent.
@@ -109,10 +115,17 @@ func _hand_off(view: CardView, index: int) -> void:
 	var host: Node = get_parent()
 	if host == null:
 		return
-	var handover_position: Vector2 = view.position + position
+	# Derived from target_position -- the composed source of truth _process
+	# reads from -- not the live `position`, which also carries the idle-sway
+	# and cursor-tilt offsets. Writing those into target_position would bake
+	# them in permanently; only _process may write `position` (see
+	# card_view.gd). `position` (HandView's own) compensates for the
+	# coordinate-space change from reparenting into `host`; it is only ever
+	# (0, 0) today, but this keeps the handoff correct if that changes.
+	var handover_position: Vector2 = view.target_position + position
 	remove_child(view)
 	host.add_child(view)
-	view.position = handover_position
+	view.target_position = handover_position
 	_pending_view = view
 	_pending_index = index
 
@@ -160,6 +173,4 @@ func deal_in() -> void:
 		var landed: Vector2 = view.rest_position
 		view.target_position = landed + Vector2(0.0, Juice.DEAL_FROM_BELOW)
 		view.position = view.target_position
-		var tween := Juice.spring(create_tween())
-		tween.tween_interval(index * Juice.DEAL_STAGGER)
-		tween.tween_property(view, "target_position", landed, Juice.SPRING_TIME)
+		view.spring_to(landed, index * Juice.DEAL_STAGGER)

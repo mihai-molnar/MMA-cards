@@ -304,6 +304,24 @@ func lunge_to(anchor: Vector2) -> void:
 	tween.chain().tween_callback(queue_free)
 	_tween = tween
 
+## Springs this card to a position, optionally after a delay. Owns the tween in
+## the shared _tween slot, so a hover or lunge starting mid-flight cancels it
+## instead of fighting it. HandView's deal uses this rather than creating its
+## own tween -- a tween owned by another node is invisible to _animate_to's
+## kill, and the two then drive target_position simultaneously.
+func spring_to(p_position: Vector2, delay: float = 0.0) -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	if not is_inside_tree():
+		# No _process off-tree, so snap immediately, same as _animate_to's
+		# out-of-tree branch.
+		target_position = p_position
+		position = p_position
+		return
+	_tween = Juice.spring(create_tween())
+	_tween.tween_interval(delay)
+	_tween.tween_property(self, "target_position", p_position, Juice.SPRING_TIME)
+
 func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()

@@ -14,15 +14,28 @@ func _new_card() -> CardView:
 
 func _test_idle_pauses_while_hovered(t: TestRunner) -> void:
 	# The readability guarantee: the card being read is the one card holding
-	# still. Idle sway must stop entirely while hovered.
+	# still. Idle sway must stop entirely while hovered, and resume with the
+	# correct value the instant the cursor leaves.
 	var view: CardView = _new_card()
 	view.set_rest_transform(Vector2(300, 430), 0.2, 3)
+	# Overrides the random per-instance phase _init() picks, so the sway this
+	# test expects on unhover is deterministic rather than "usually nonzero".
+	# _elapsed is still 0.0 (the card is never added to a tree, so _process
+	# never runs), so this is exactly what _update_idle() must produce.
+	view._idle_phase = 0.7
 	view.apply_hover(true)
 	t.check_eq(view.debug_idle_offset(), Vector2.ZERO,
 		"a hovered card has no idle sway")
 	view.apply_hover(false)
-	t.check(view.debug_idle_offset() != Vector2.ZERO or true,
-		"an unhovered card is free to sway")
+	var expected: Vector2 = Juice.idle_offset(0.0, 0.7)
+	t.check(expected != Vector2.ZERO,
+		"sanity check on the test's own fixture: the fixed phase must produce a nonzero offset")
+	# This was previously `X or true` -- unconditionally green regardless of
+	# what apply_hover(false) actually did. A CardView with _update_idle()'s
+	# body deleted (idle sway left stuck at whatever apply_hover(true) forced
+	# it to) would still pass the old assertion.
+	t.check_eq(view.debug_idle_offset(), expected,
+		"an unhovered card's idle sway resumes at exactly Juice.idle_offset(elapsed, phase), not stuck at zero")
 	view.free()
 
 func _test_lunge_records_anchor_and_marks_lunging(t: TestRunner) -> void:

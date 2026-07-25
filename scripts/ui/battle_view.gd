@@ -17,6 +17,13 @@ var screen_fx: ScreenFx
 ## touch this) always react immediately.
 var _pending_reaction_delay: float = 0.0
 
+## Set by _on_turn_started, which BattleState always emits immediately before
+## hand_changed when a genuinely new hand is drawn (see _begin_player_turn).
+## Consumed by the very next _on_hand_changed so only that rebuild deals the
+## hand in -- an ordinary hand_changed from playing a single card (or from
+## discarding at end_turn) must not re-deal the cards still in hand.
+var _pending_deal: bool = false
+
 func _ready() -> void:
 	battle = BattleState.new()
 	_build_ui()
@@ -63,13 +70,19 @@ func _on_turn_started(turn_number: int) -> void:
 	hud.suppress_player_guard_pulse()
 	hud.update_turn(turn_number)
 	hud.append_log("-- Turn %d --" % turn_number)
+	# turn_started always fires immediately before the hand_changed for the
+	# freshly-drawn hand (see BattleState._begin_player_turn) -- arm the very
+	# next rebuild to deal the hand in, rather than every rebuild.
+	_pending_deal = true
 
 func _on_ap_changed(current: int, maximum: int) -> void:
 	hud.update_ap(current, maximum)
 	hand_view.refresh_states(battle)
 
 func _on_hand_changed() -> void:
-	hand_view.rebuild(battle)
+	var deal: bool = _pending_deal
+	_pending_deal = false
+	hand_view.rebuild(battle, deal)
 
 func _on_fighters_changed() -> void:
 	hud.update_fighters(battle)

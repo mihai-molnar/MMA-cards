@@ -28,3 +28,13 @@ window/size/window_width_override=2560
 window/size/window_height_override=1440
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
+
+[rendering]
+
+; ScreenFx.shake() offsets the CanvasLayer that holds the only background
+; (BattleHud's full-rect ColorRect), so a big hit can briefly expose a sliver
+; of whatever the engine clears to underneath it. Left at the engine default
+; of mid-grey (0.3, 0.3, 0.3), that sliver reads as a visible grey flash at
+; the screen edge on every big hit. Matching it to the HUD's own background
+; colour means anything the shake exposes is indistinguishable from the HUD.
+environment/defaults/default_clear_color=Color(0.09, 0.09, 0.12, 1)

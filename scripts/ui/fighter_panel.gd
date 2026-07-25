@@ -28,6 +28,13 @@ var _name_label: Label
 var _hp_label: Label
 var _status_label: Label
 var _rect_home: Vector2 = Vector2.ZERO
+## The rect's colour at build time -- what _flash_rect must always return to.
+## Reading _rect.color live instead (the old bug) captures whatever colour a
+## still-in-flight flash tween happens to be passing through, so two pulses
+## inside one flash window ratchet the "home" colour toward DAMAGE_FLASH a
+## little more each time and never reset.
+var _rect_colour_home: Color = Color.WHITE
+var _flash_tween: Tween
 
 var _last_hp: int = -1
 var _last_guard: int = 0
@@ -56,6 +63,7 @@ func _build(display_name: String, rect_color: Color) -> void:
 	_rect.position = Vector2(PANEL_SIZE.x - RECT_SIZE.x, 0.0) if align_right else Vector2.ZERO
 	_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_rect_home = _rect.position
+	_rect_colour_home = rect_color
 	add_child(_rect)
 
 	# The fighter's name sits inside its rectangle, centred, and is parented to
@@ -203,10 +211,14 @@ func _float_number(text: String, colour: Color) -> void:
 func _flash_rect(colour: Color) -> void:
 	if not is_inside_tree():
 		return
-	var home: Color = _rect.color
-	var tween := create_tween()
-	tween.tween_property(_rect, "color", colour, Juice.FLASH_TIME * 0.35)
-	tween.tween_property(_rect, "color", home, Juice.FLASH_TIME)
+	# Kill any flash still in flight before starting another, same as _shake's
+	# sibling tween below -- otherwise two pulses inside one flash window both
+	# drive _rect.color at once and fight each other.
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(_rect, "color", colour, Juice.FLASH_TIME * 0.35)
+	_flash_tween.tween_property(_rect, "color", _rect_colour_home, Juice.FLASH_TIME)
 
 func _shake(amplitude: float) -> void:
 	var step_time: float = Juice.SHAKE_TIME / float(Juice.SHAKE_STEPS + 1)
