@@ -49,6 +49,7 @@ func rebuild(battle: BattleState) -> void:
 
 	layout_cards()
 	refresh_states(battle)
+	deal_in()
 
 ## Fans the children along an arc. Derived purely from index and count, so
 ## calling it repeatedly is idempotent.
@@ -142,3 +143,23 @@ func _return_pending() -> void:
 	add_child(view)
 	move_child(view, index)
 	view.set_rest_transform(view.rest_position, view.rest_rotation, view.rest_z_index)
+
+## Flies the hand in from below, one card at a time, so a new hand arrives
+## rather than appearing. Each card springs from DEAL_FROM_BELOW up into its
+## slot, staggered by DEAL_STAGGER.
+##
+## Off-tree (in tests) there is no tween, so the cards are simply left at rest —
+## the invariant either way is that every card ends at its rest position.
+func deal_in() -> void:
+	if not is_inside_tree():
+		return
+	for index: int in range(get_child_count()):
+		var view: CardView = get_child(index) as CardView
+		if view == null:
+			continue
+		var landed: Vector2 = view.rest_position
+		view.target_position = landed + Vector2(0.0, Juice.DEAL_FROM_BELOW)
+		view.position = view.target_position
+		var tween := Juice.spring(create_tween())
+		tween.tween_interval(index * Juice.DEAL_STAGGER)
+		tween.tween_property(view, "target_position", landed, Juice.SPRING_TIME)
