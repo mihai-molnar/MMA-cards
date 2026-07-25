@@ -18,13 +18,13 @@ run/main_scene="res://level.tscn"
 [display]
 
 ; The HUD is laid out in absolute pixels against a 1152x648 design space.
-; Rather than re-position every element, the window opens at 1920x1080 and the
+; Rather than re-position every element, the window opens at 2560x1440 and the
 ; whole canvas is scaled up to fill it. Both are exactly 16:9, so "keep" gives a
-; clean 1.667x magnification with no letterboxing and no distortion -- and the
+; clean 2.222x magnification with no letterboxing and no distortion -- and the
 ; layout coordinates in battle_hud.gd stay valid.
 window/size/viewport_width=1152
 window/size/viewport_height=648
-window/size/window_width_override=1920
-window/size/window_height_override=1080
+window/size/window_width_override=2560
+window/size/window_height_override=1440
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"

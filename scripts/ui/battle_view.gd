@@ -7,6 +7,7 @@ extends Node2D
 var battle: BattleState
 var hud: BattleHud
 var hand_view: HandView
+var screen_fx: ScreenFx
 
 func _ready() -> void:
 	battle = BattleState.new()
@@ -29,6 +30,12 @@ func _build_ui() -> void:
 
 	# Attacks fly at the enemy, Block pulls back to the player.
 	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
+
+	screen_fx = ScreenFx.new()
+	add_child(screen_fx)
+	# The CanvasLayer is what shake offsets; the HUD is a Control, so the
+	# full-screen flash can anchor to it.
+	screen_fx.bind(layer, hud)
 
 	hud.bring_result_panel_to_front()
 
@@ -59,6 +66,17 @@ func _on_hand_changed() -> void:
 func _on_fighters_changed() -> void:
 	hud.update_fighters(battle)
 	hand_view.refresh_states(battle)
+	_react_to_damage()
+
+## FighterPanel diffs hp/guard itself and records what it saw, so the whole-view
+## reaction can be driven from that without BattleState needing a payload.
+func _react_to_damage() -> void:
+	var amount: int = hud.last_damage_amount()
+	if amount <= 0:
+		return
+	screen_fx.hit_stop()
+	screen_fx.shake(Juice.screen_shake_amplitude(amount))
+	screen_fx.flash()
 
 func _on_card_chosen(index: int) -> void:
 	# The card only departs the hand once BattleState confirms the play; a
