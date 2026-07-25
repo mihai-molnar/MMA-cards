@@ -320,10 +320,14 @@ func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> vo
 func _on_button_down() -> void:
 	if not is_inside_tree():
 		return
+	# Share _tween slot so squash, hover and lunge tweens are mutually exclusive.
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
 	var tween := create_tween()
 	tween.tween_property(self, "target_scale", Juice.SQUASH_SCALE, Juice.SQUASH_TIME)
 	tween.tween_property(self, "target_scale",
 		Vector2.ONE * Juice.HOVER_SCALE if _hovered else Vector2.ONE, Juice.SQUASH_TIME)
+	_tween = tween
 
 func _on_mouse_entered() -> void:
 	apply_hover(true)
