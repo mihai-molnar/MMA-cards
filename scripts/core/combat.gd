@@ -1,0 +1,31 @@
+class_name Combat
+extends RefCounted
+
+## The single damage pipeline. Every point of damage in the game flows through
+## resolve_damage, player and enemy alike:
+##   base -> attacker outgoing -> defender incoming -> clamp -> guard -> hp
+
+class DamageResult extends RefCounted:
+	var raw: int = 0
+	var absorbed: int = 0
+	var hp_loss: int = 0
+
+	func _init(p_raw: int, p_absorbed: int, p_hp_loss: int) -> void:
+		raw = p_raw
+		absorbed = p_absorbed
+		hp_loss = p_hp_loss
+
+static func resolve_damage(base: int, source: Fighter, target: Fighter) -> DamageResult:
+	var amount: int = base
+	amount = StatusRegistry.modify_outgoing(source.statuses, amount)
+	amount = StatusRegistry.modify_incoming(target.statuses, amount)
+	amount = maxi(amount, 0)
+
+	var absorbed: int = target.absorb_into_guard(amount)
+	var hp_loss: int = target.apply_hp_loss(amount - absorbed)
+	return DamageResult.new(amount, absorbed, hp_loss)
+
+## What `base` would hit for, given only the source's modifiers. Used by the
+## enemy intent telegraph — it must not mutate anything.
+static func preview_damage(base: int, source: Fighter) -> int:
+	return maxi(StatusRegistry.modify_outgoing(source.statuses, base), 0)
