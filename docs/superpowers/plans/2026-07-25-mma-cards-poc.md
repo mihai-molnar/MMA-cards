@@ -11,7 +11,30 @@
 ## Global Constraints
 
 - Godot binary: `/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot` — **path contains a space, always quote it**.
-- Test command: `"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --headless --path . --script res://tests/run_tests.gd`
+- **Test command — always both lines, in this order:**
+  ```bash
+  GODOT="/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot"
+  "$GODOT" --headless --path . --import >/dev/null 2>&1
+  "$GODOT" --headless --path . --script res://tests/run_tests.gd
+  ```
+  The `--import` step is **mandatory, not optional**. Godot resolves `class_name`
+  globals through `.godot/global_script_class_cache.cfg`, which only the editor
+  or an explicit `--import` writes — and `.godot/` is gitignored. Skip the import
+  after adding a script and every suite referencing the new class fails to load
+  with `Identifier "X" not declared in the current scope`. Verified empirically
+  on a cache-less checkout: without `--import` the suite fails; with it, it passes.
+- **Every test suite starts with exactly this preamble:**
+  ```gdscript
+  extends RefCounted
+
+  const TestRunner := preload("res://tests/run_tests.gd")
+
+  func run(t: TestRunner) -> void:
+  ```
+  Reference game classes (`Fighter`, `Combat`, `BattleConfig`, …) directly by
+  their global names — the `--import` step is what makes those resolve. The local
+  `preload` const is only for `TestRunner` itself, so the runner's type resolves
+  even before an import has run.
 - All GDScript is **typed**: explicit parameter and return types on every function.
 - Naming: `PascalCase` for `class_name`, `snake_case` for members and functions, leading `_` for private.
 - `scripts/core/` must never reference `Node`, `SceneTree`, or any scene-tree API. If a change seems to require it, the change belongs in `scripts/ui/`.
@@ -72,7 +95,15 @@ CLAUDE.md                                                                 (Task 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `TestRunner` (the `SceneTree` script) exposing `check(condition: bool, message: String) -> void` and `check_eq(actual: Variant, expected: Variant, message: String) -> void`. Every later suite is a `RefCounted` script with `func run(t) -> void` where `t` is the runner. Suites are registered by adding their path to the `SUITES` const array in `tests/run_tests.gd`.
+- Produces: `TestRunner` (the `SceneTree` script) exposing `check(condition: bool, message: String) -> void` and `check_eq(actual: Variant, expected: Variant, message: String) -> void`. Every later suite is a `RefCounted` script with a local `const TestRunner := preload("res://tests/run_tests.gd")` and `func run(t: TestRunner) -> void`. Suites are registered by adding their path to the `SUITES` const array in `tests/run_tests.gd`.
+
+> **Amended during implementation.** Two defects surfaced that this task's
+> original code did not anticipate, both now reflected in Global Constraints:
+> the mandatory `--import` step before tests, and a load guard so a suite that
+> fails to parse reports a failure instead of hanging the run forever. See
+> `.superpowers/sdd/2026-07-25-mma-cards-poc/task-1-report.md` for the
+> reproductions. The code below is the original; the committed version carries
+> those two fixes.
 
 - [ ] **Step 1: Write the harness self-test suite**
 
@@ -81,8 +112,10 @@ Create `tests/suites/test_harness.gd`:
 ```gdscript
 extends RefCounted
 
+const TestRunner := preload("res://tests/run_tests.gd")
+
 ## Proves the runner counts checks and compares values correctly.
-func run(t) -> void:
+func run(t: TestRunner) -> void:
 	t.check(true, "check() accepts a true condition")
 	t.check_eq(2 + 2, 4, "check_eq() compares equal integers")
 	t.check_eq("jab", "jab", "check_eq() compares equal strings")
@@ -197,7 +230,9 @@ Create `tests/suites/test_status_bag.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_apply_and_read(t)
 	_test_stacking(t)
 	_test_expiry_countdown(t)
@@ -390,7 +425,9 @@ Create `tests/suites/test_status_registry.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_strength_math(t)
 	_test_registry_dispatch(t)
 
@@ -519,7 +556,9 @@ Create `tests/suites/test_fighter.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_initial_state(t)
 	_test_guard(t)
 	_test_hp_loss(t)
@@ -660,7 +699,9 @@ Create `tests/suites/test_combat.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_plain_damage(t)
 	_test_guard_absorption(t)
 	_test_guard_spillover(t)
@@ -826,7 +867,9 @@ Create `tests/suites/test_effects.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_damage_effect(t)
 	_test_bonus_consumed_once(t)
 	_test_guard_effect(t)
@@ -1057,6 +1100,8 @@ Create `tests/suites/test_combo_rule.gd`:
 ```gdscript
 extends RefCounted
 
+const TestRunner := preload("res://tests/run_tests.gd")
+
 func _card(card_id: StringName, tag: StringName, damage: int) -> CardData:
 	var card := CardData.new()
 	card.id = card_id
@@ -1082,7 +1127,7 @@ func _block() -> CardData:
 	card.effects = [effect] as Array[CardEffect]
 	return card
 
-func run(t) -> void:
+func run(t: TestRunner) -> void:
 	var rule := ComboRule.jab_straight()
 
 	# The headline case: jab then straight is 6 + 9 + floor(15 * 0.5) = 22 total.
@@ -1205,7 +1250,9 @@ Create `tests/suites/test_card_library.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_cards_load(t)
 	_test_starting_deck(t)
 
@@ -1405,7 +1452,9 @@ Create `tests/suites/test_deck.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_initial_state(t)
 	_test_draw(t)
 	_test_conservation(t)
@@ -1582,7 +1631,9 @@ Create `tests/suites/test_enemy_brain.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_cycle_order(t)
 	_test_effects(t)
 	_test_intent_text(t)
@@ -1751,7 +1802,9 @@ Create `tests/suites/test_battle_turns.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_start(t)
 	_test_turn_counter(t)
 	_test_ap(t)
@@ -2008,7 +2061,9 @@ Create `tests/suites/test_battle_combat.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_combo_integration(t)
 	_test_combo_broken(t)
 	_test_buff_timing_across_turns(t)
@@ -2205,7 +2260,9 @@ Create `tests/suites/test_card_view.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_card_view_text(t)
 	_test_affordability(t)
 	_test_hand_view_rebuild(t)
@@ -2774,11 +2831,20 @@ Run the game:
 "/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --path .
 ```
 
-Run the tests (headless, no window):
+Run the tests (headless, no window) — **both lines, in this order**:
 ```bash
-"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --headless --path . --script res://tests/run_tests.gd
+GODOT="/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot"
+"$GODOT" --headless --path . --import >/dev/null 2>&1
+"$GODOT" --headless --path . --script res://tests/run_tests.gd
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit.
+
+**The `--import` line is mandatory.** Godot resolves `class_name` globals
+through `.godot/global_script_class_cache.cfg`, which only the editor or an
+explicit `--import` writes — and `.godot/` is gitignored. Skip it after adding
+a script and every suite referencing the new class dies with
+`Identifier "X" not declared in the current scope`. If tests fail with that
+error, you forgot the import; it is not a code bug.
 
 Regenerate the card resources after changing card constants:
 ```bash
@@ -2842,7 +2908,20 @@ No magic numbers anywhere else.
 - UI text is ASCII. The default font renders no emoji or symbol glyphs, so use
   `ATTACK 12`, not a sword icon.
 - Tests are suites in `tests/suites/`, registered in the `SUITES` array in
-  `tests/run_tests.gd`. Each suite is a `RefCounted` with `func run(t) -> void`.
+  `tests/run_tests.gd`. Every suite starts with exactly this preamble:
+  ```gdscript
+  extends RefCounted
+
+  const TestRunner := preload("res://tests/run_tests.gd")
+
+  func run(t: TestRunner) -> void:
+  ```
+  The local `preload` const is only for `TestRunner`, so the runner's type
+  resolves even before an import has run. Game classes are referenced by their
+  global names — `--import` is what makes those resolve.
+- A suite that fails to load is reported as a failure and exits 1, rather than
+  silently passing with zero checks. Do not weaken that guard in
+  `tests/run_tests.gd`; without it a mistyped suite path reads as green.
 
 ## Design docs
 
