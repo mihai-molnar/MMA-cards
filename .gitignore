@@ -7,3 +7,6 @@
 
 # Orchestration scratch (task briefs, reports, ledgers)
 .superpowers/
+
+# macOS
+.DS_Store

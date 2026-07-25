@@ -6,7 +6,7 @@ extends Button
 
 signal card_selected(view: CardView)
 
-const CARD_SIZE: Vector2 = Vector2(120, 170)
+const CARD_SIZE: Vector2 = Vector2(200, 300)
 const ATTACK_COLOR: Color = Color(0.32, 0.16, 0.16)
 const DEFENSE_COLOR: Color = Color(0.16, 0.20, 0.32)
 const COMBO_BORDER_COLOR: Color = Color(1.0, 0.80, 0.20)
@@ -17,13 +17,8 @@ const UNAFFORDABLE_ALPHA: float = 0.45
 const BORDER_WIDTH: float = 3.0
 const BORDER_COLOR: Color = Color(0.05, 0.05, 0.07)
 
-const HOVER_LIFT: float = 28.0
-const HOVER_SCALE: float = 1.08
-const HOVER_TIME: float = 0.12
 const HOVER_Z: int = 50
 const LUNGE_Z: int = 60
-const LUNGE_TIME: float = 0.28
-const LUNGE_SCALE: float = 1.15
 
 var card: CardData
 
@@ -47,11 +42,26 @@ var debug_last_lunge_anchor: Vector2 = Vector2.ZERO
 var _hovered: bool = false
 var _tween: Tween
 
+## Continuous-motion layers, added on top of the tweened target_* values every
+## frame. See _process.
+var _idle_phase: float = 0.0
+var _idle_offset: Vector2 = Vector2.ZERO
+var _idle_rotation: float = 0.0
+var _tilt_offset: Vector2 = Vector2.ZERO
+var _tilt_rotation: float = 0.0
+var _elapsed: float = 0.0
+var _lunging: bool = false
+
 var _border: ColorRect
 var _background: ColorRect
+var _art: TextureRect
 var _name_label: Label
 var _cost_label: Label
 var _text_label: Label
+
+## True once configure() has found real art for the current card. Set by
+## _apply_art(); read by set_combo_armed() to pick which layer to tint.
+var _has_art: bool = false
 
 static func create(p_card: CardData) -> CardView:
 	var view := CardView.new()
@@ -66,8 +76,66 @@ func _init() -> void:
 	flat = true
 	clip_contents = true
 	_build()
+	_idle_phase = randf() * TAU
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
+	button_down.connect(_on_button_down)
+
+## The live transform is composed from three layers every frame:
+##   target_* : absolute values the tweens drive (hover, squash, lunge, deal)
+##   idle     : continuous sway, additive, paused while hovered or lunging
+##   tilt     : cursor lean, additive, hovered card only
+##
+## Tweens therefore must NEVER target position/rotation/scale directly — this
+## loop would overwrite them every frame and the result would be jitter rather
+## than a clean failure.
+func _process(delta: float) -> void:
+	_elapsed += delta
+	_update_idle()
+	_update_tilt(delta)
+	position = Juice.compose_position(target_position, _idle_offset, _tilt_offset)
+	rotation = Juice.compose_rotation(target_rotation, _idle_rotation, _tilt_rotation)
+	scale = target_scale
+
+func _update_idle() -> void:
+	# Hovering stops the sway: the card being read is the one card holding
+	# still. A lunging card is already fully driven by its tween.
+	if _hovered or _lunging:
+		_idle_offset = Vector2.ZERO
+		_idle_rotation = 0.0
+		return
+	_idle_offset = Juice.idle_offset(_elapsed, _idle_phase)
+	_idle_rotation = Juice.idle_rotation(_elapsed, _idle_phase)
+
+## Leans the hovered card toward the cursor, Balatro-style. Only the hovered
+## card tilts — cheaper, and unread cards stay still.
+func _update_tilt(delta: float) -> void:
+	var want_offset := Vector2.ZERO
+	var want_rotation: float = 0.0
+	if _hovered and not _lunging and is_inside_tree():
+		var to_cursor: Vector2 = get_global_mouse_position() - (global_position + CARD_SIZE / 2.0)
+		var nx: float = clampf(to_cursor.x / (CARD_SIZE.x * 1.5), -1.0, 1.0)
+		var ny: float = clampf(to_cursor.y / (CARD_SIZE.y * 1.5), -1.0, 1.0)
+		want_rotation = deg_to_rad(nx * Juice.TILT_MAX_DEG)
+		want_offset = Vector2(nx, ny) * Juice.TILT_MAX_PX
+	var weight: float = clampf(delta * Juice.TILT_LERP_SPEED, 0.0, 1.0)
+	_tilt_offset = _tilt_offset.lerp(want_offset, weight)
+	_tilt_rotation = lerpf(_tilt_rotation, want_rotation, weight)
+
+func debug_idle_offset() -> Vector2:
+	return _idle_offset
+
+func debug_tilt() -> Vector2:
+	return _tilt_offset
+
+func is_lunging() -> bool:
+	return _lunging
+
+## True while a tween is actively driving target_* toward a destination.
+## Test hook: lets tests confirm an animation was actually started, rather
+## than only inspecting where target_* ends up.
+func debug_is_animating() -> bool:
+	return _tween != null and _tween.is_valid() and _tween.is_running()
 
 func _build() -> void:
 	_border = ColorRect.new()
@@ -84,6 +152,19 @@ func _build() -> void:
 	_background.offset_bottom = -BORDER_WIDTH
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background)
+
+	# Filled in by configure() when CardArt.texture_for() finds a matching
+	# PNG. KEEP_ASPECT_COVERED plus EXPAND_IGNORE_SIZE fills the card rect
+	# without letting the texture's own size push CardView bigger than
+	# CARD_SIZE -- clip_contents (set in _init) crops any overflow, though
+	# the art's 2:3 aspect already matches CARD_SIZE's, so there is none.
+	_art = TextureRect.new()
+	_art.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_art.visible = false
+	add_child(_art)
 
 	var column := VBoxContainer.new()
 	column.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -123,11 +204,33 @@ func configure(p_card: CardData) -> void:
 	card = p_card
 	if card == null:
 		return
+	# Labels are always populated, even when art hides them -- debug_text()
+	# must keep reporting something real either way (see its own doc comment).
 	_name_label.text = card.display_name
 	_cost_label.text = "%d AP" % card.cost
 	_text_label.text = _rules_text()
 	_background.color = DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
+	_apply_art()
 	set_combo_armed(false)
+
+## Looks up art for the current card and switches appearance accordingly.
+## When art exists: shows it filling the rect and hides the name, cost and
+## rules-text labels plus the coloured background and border -- all four
+## are either baked into the image or replaced by its own gold frame, and
+## would otherwise double up or peek out from behind the art.
+## When it does not: leaves the original rectangle-and-labels look exactly
+## as it was, which keeps this a real (visibly different) fallback rather
+## than a silent no-op.
+func _apply_art() -> void:
+	var texture: Texture2D = CardArt.texture_for(card.id)
+	_has_art = texture != null
+	_art.texture = texture
+	_art.visible = _has_art
+	_border.visible = not _has_art
+	_background.visible = not _has_art
+	_name_label.visible = not _has_art
+	_cost_label.visible = not _has_art
+	_text_label.visible = not _has_art
 
 func _rules_text() -> String:
 	if not card.rules_text.is_empty():
@@ -149,16 +252,29 @@ func _base_color() -> Color:
 		return ATTACK_COLOR
 	return DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
 
-## Idempotent: always computed from the base color, so calling this N times
-## with the same value equals calling it once. refresh_states() calls this
-## once per model event, so drifting from repeated lerps would compound.
+## Idempotent: always computed from a fixed base value (the background's
+## base color, or Color.WHITE for the art) -- never lerped from whatever the
+## target is currently holding -- so calling this N times with the same
+## value equals calling it once. refresh_states() calls this once per model
+## event; lerping from the live value is exactly the bug ("progressive gold
+## drift on repeated refreshes") that shipped once already and must not
+## return (see test_card_view.gd's idempotency checks).
+##
+## With art, the coloured background is hidden (see _apply_art), so the
+## highlight retargets to a modulate tint on the art itself instead. Tinting
+## modulate's RGB only (alpha stays 1.0) keeps this composing correctly with
+## set_affordable(false), which dims via modulate.a on the whole Button --
+## Godot multiplies a child's modulate into its parent's when drawing, so
+## the two effects combine automatically rather than fighting over one value.
 func set_combo_armed(value: bool) -> void:
 	if value:
 		add_theme_constant_override("outline_size", 3)
-		_background.color = _base_color().lerp(COMBO_BORDER_COLOR, 0.25)
 	else:
 		remove_theme_constant_override("outline_size")
-		_background.color = _base_color()
+	if _has_art:
+		_art.modulate = Color.WHITE.lerp(COMBO_BORDER_COLOR, 0.25) if value else Color.WHITE
+	else:
+		_background.color = _base_color().lerp(COMBO_BORDER_COLOR, 0.25) if value else _base_color()
 
 ## Everything the card displays, for tests.
 func debug_text() -> String:
@@ -202,53 +318,138 @@ func apply_hover(value: bool) -> void:
 	_hovered = value
 	if value:
 		z_index = HOVER_Z
-		_animate_to(rest_position - Vector2(0.0, HOVER_LIFT), 0.0, Vector2.ONE * HOVER_SCALE)
+		_animate_to(rest_position - Vector2(0.0, Juice.HOVER_LIFT), 0.0, Vector2.ONE * Juice.HOVER_SCALE)
 	else:
 		z_index = rest_z_index
 		_animate_to(rest_position, rest_rotation, Vector2.ONE)
+	_update_idle()
 
-## The played-card animation. The card must already have been reparented out of
-## HandView, or the imminent rebuild will free it mid-tween.
+## The played-card animation: a short backswing away from the target, then the
+## strike. The card must already have been reparented out of HandView.
 func lunge_to(anchor: Vector2) -> void:
 	debug_last_lunge_anchor = anchor
-	# A hover tween (started by apply_hover, e.g. from clicking a hovered
-	# card) is very likely still live at this point. Without killing it here,
-	# remove_child/add_child during the reparent that precedes this call
-	# pauses then resumes it, and it would keep driving position/rotation/
-	# scale alongside the lunge tween below.
-	if _tween != null and _tween.is_valid():
-		_tween.kill()
+	_lunging = true
 	z_index = LUNGE_Z
 	disabled = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if not is_inside_tree():
-		queue_free()
-		return
-	var tween := create_tween()
-	tween.tween_property(self, "position", anchor - CARD_SIZE / 2.0, LUNGE_TIME)
-	tween.parallel().tween_property(self, "scale", Vector2.ONE * LUNGE_SCALE, LUNGE_TIME)
-	tween.parallel().tween_property(self, "rotation", 0.0, LUNGE_TIME)
-	tween.parallel().tween_property(self, "modulate:a", 0.0, LUNGE_TIME)
-	tween.chain().tween_callback(queue_free)
-
-func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
-	target_position = p_position
-	target_rotation = p_rotation
-	target_scale = p_scale
-	# Kill any live tween before either branch below: the out-of-tree path
-	# used to skip this, so a tween started while the card was in the tree
-	# (e.g. a hover) could keep running and later fight a fresh one.
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 	if not is_inside_tree():
+		queue_free()
+		return
+
+	var centre: Vector2 = target_position + CARD_SIZE / 2.0
+	var toward: Vector2 = (anchor - centre).normalized()
+	var wind_up: Vector2 = target_position - toward * Juice.ANTICIPATE_DIST
+
+	var tween := create_tween()
+	# Anticipation: pull back before striking, so the punch has a windup.
+	tween.tween_property(self, "target_position", wind_up, Juice.ANTICIPATE_TIME) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(self, "target_scale", Juice.SQUASH_SCALE, Juice.ANTICIPATE_TIME)
+	# The strike: accelerate into the target, stretched along travel.
+	tween.chain().tween_property(self, "target_position", anchor - CARD_SIZE / 2.0, Juice.LUNGE_TIME) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(self, "target_scale",
+		Juice.STRETCH_SCALE * Juice.LUNGE_SCALE, Juice.LUNGE_TIME)
+	tween.parallel().tween_property(self, "target_rotation", 0.0, Juice.LUNGE_TIME)
+	# Stay fully opaque for LUNGE_FADE_RATIO of the strike, then fade over what
+	# remains, in parallel with the position tween above. A plain
+	# tween_interval() followed by a plain tween_property() does NOT achieve
+	# this: a non-parallel tweener starts after the *whole* previous parallel
+	# group finishes (here, LUNGE_TIME -- the longest tweener in the group),
+	# not after just the interval, so the fade would never visibly start
+	# early (confirmed empirically before landing on this). set_delay() on
+	# the parallel-joined PropertyTweener itself is the correct primitive:
+	# it delays that one tweener's own start within the group.
+	var fade_time: float = Juice.LUNGE_TIME * (1.0 - Juice.LUNGE_FADE_RATIO)
+	var fade_delay: float = Juice.LUNGE_TIME - fade_time
+	tween.parallel().tween_property(self, "modulate:a", 0.0, fade_time).set_delay(fade_delay)
+	tween.chain().tween_callback(queue_free)
+	_tween = tween
+
+## Springs this card to a position, optionally after a delay. Owns the tween in
+## the shared _tween slot, so a hover or lunge starting mid-flight cancels it
+## instead of fighting it. HandView's deal uses this rather than creating its
+## own tween -- a tween owned by another node is invisible to _animate_to's
+## kill, and the two then drive target_position simultaneously.
+func spring_to(p_position: Vector2, delay: float = 0.0) -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	if not is_inside_tree():
+		# No _process off-tree, so snap immediately, same as _animate_to's
+		# out-of-tree branch.
+		target_position = p_position
+		position = p_position
+		return
+	_tween = Juice.spring(create_tween())
+	_tween.tween_interval(delay)
+	_tween.tween_property(self, "target_position", p_position, Juice.SPRING_TIME)
+
+## Places the card at `start` and springs it to its resting slot. Used when the
+## hand re-fans after a card leaves: the rebuild destroys and recreates every
+## node, so without carrying the old position across, survivors simply appear
+## at their new slots and the re-fan reads as a snap.
+##
+## Takes only a start -- the destination is always rest_position, which
+## set_rest_transform() (via HandView.layout_cards(), always called before
+## this) has already written. Owns the tween in the shared _tween slot,
+## killing any existing one, exactly as spring_to() does -- a tween created
+## outside CardView is invisible to _animate_to's kill, which is precisely
+## the bug that once left hover silently dead.
+func slide_from(start: Vector2, delay: float = 0.0) -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	if not is_inside_tree():
+		# No _process off-tree, so snap immediately to the rest position
+		# layout_cards() already assigned -- same as spring_to's and
+		# _animate_to's out-of-tree branch.
+		target_position = rest_position
+		position = rest_position
+		return
+	target_position = start
+	position = start
+	_tween = Juice.spring(create_tween())
+	_tween.tween_interval(delay)
+	_tween.tween_property(self, "target_position", rest_position, Juice.REFAN_TIME)
+
+func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	if not is_inside_tree():
+		# No _process off-tree, so snap immediately -- tests need this branch,
+		# and there is no tween to animate the snap away in the next frame.
+		target_position = p_position
+		target_rotation = p_rotation
+		target_scale = p_scale
 		position = p_position
 		rotation = p_rotation
 		scale = p_scale
 		return
-	_tween = create_tween()
-	_tween.tween_property(self, "position", p_position, HOVER_TIME)
-	_tween.parallel().tween_property(self, "rotation", p_rotation, HOVER_TIME)
-	_tween.parallel().tween_property(self, "scale", p_scale, HOVER_TIME)
+	# In-tree: target_* stays at its current value here and the tween below
+	# carries it to p_position/p_rotation/p_scale over Juice.HOVER_TIME. Do
+	# NOT pre-assign target_* to the destination -- that would make the tween
+	# interpolate from the destination to itself, i.e. animate nothing, and
+	# _process would compose the final pose on the very next frame instead of
+	# easing toward it.
+	_tween = Juice.spring(create_tween())
+	_tween.tween_property(self, "target_position", p_position, Juice.HOVER_TIME)
+	_tween.parallel().tween_property(self, "target_rotation", p_rotation, Juice.HOVER_TIME)
+	_tween.parallel().tween_property(self, "target_scale", p_scale, Juice.HOVER_TIME)
+
+## Compresses the card the instant it is pressed, before anything else happens.
+## Immediate physical response to a click is most of what makes it feel good.
+func _on_button_down() -> void:
+	if not is_inside_tree():
+		return
+	# Share _tween slot so squash, hover and lunge tweens are mutually exclusive.
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	var tween := create_tween()
+	tween.tween_property(self, "target_scale", Juice.SQUASH_SCALE, Juice.SQUASH_TIME)
+	tween.tween_property(self, "target_scale",
+		Vector2.ONE * Juice.HOVER_SCALE if _hovered else Vector2.ONE, Juice.SQUASH_TIME)
+	_tween = tween
 
 func _on_mouse_entered() -> void:
 	apply_hover(true)

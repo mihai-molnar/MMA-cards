@@ -101,6 +101,58 @@ No magic numbers anywhere else. But the constants are not uniformly live:
   hand size, HP) is read directly at battle time and takes effect
   immediately — no regen step needed.
 
+**These same five constants are also baked into the card art as printed
+numbers, and regenerating the `.tres` does not touch the art.**
+`assets/cards/card_jab.png`, `card_block.png` and `card_straight.png` are
+fully composed card faces — title, artwork, value badge, rules text and cost
+badge already drawn in — showing jab 6 damage / 1 cost, block 5 guard /
+1 cost, straight 9 damage / 2 cost. Changing `JAB_DAMAGE`, `BLOCK_GUARD`,
+`STRAIGHT_DAMAGE`, or either cost constant makes the card **lie** — the
+number on the art and the number the game actually uses will disagree —
+until someone regenerates new art to match. There is no automated guard for
+this (deliberately — see "Card art" below); check it by eye after any
+balance change that touches those five constants.
+
+## Card art
+
+Card faces are looked up by convention, in `scripts/ui/card_art.gd`: a card
+with id `jab` uses `res://assets/cards/card_jab.png`. Adding a card's art is
+dropping in a matching PNG — no lookup table to edit, no code change. A card
+with no matching file falls back to `CardView`'s original coloured
+rectangle + labels rendering, which is a real, intentional degradation path
+for a card whose art has not been painted yet, not a bug.
+
+The three current images (`card_jab.png`, `card_block.png`,
+`card_straight.png`) are fully composed card faces, not raw illustrations —
+title banner, artwork, value badge, rules text and cost badge are already
+drawn in, which is why `CardView` hides its own name/cost/rules-text labels
+and coloured background/border whenever art is present (see `_apply_art()`).
+Each image has a wide transparent glow margin around the solid card body,
+and the vertical margin differs per card, so the images are used **whole**,
+never cropped — cropping each to its own opaque bounds would make the three
+cards different rendered sizes and break fan alignment.
+
+**Known discrepancy — the Straight card's art describes the combo rule
+incorrectly, and this is expected, not a bug to "fix" by editing code:**
+`card_straight.png` prints *"Combo: If Jab was played earlier this turn,
+deal 50% more damage."* That is not what the game does. The actual rule
+(`ComboRule.evaluate()`, wired up as `BattleState._combo_rules`'s
+`ComboRule.jab_straight()`):
+- Jab must **immediately precede** the Straight — any card played in
+  between breaks the combo, not just "earlier this turn."
+- The bonus is 50% of the **combined** base damage of both cards
+  (6 + 9 = 15, `floori(15 * 0.5)` = +7), added to the Straight's base
+  damage — so a comboed Straight hits **16**, not the 13 you'd get from
+  boosting 9 alone by 50%.
+
+The user has decided the code is authoritative here and the art will be
+regenerated later; until then, treat the printed rules text as wrong and the
+`ComboRule` / `BattleConfig.COMBO_BONUS_RATIO` code path as the truth. This
+is a deliberate documentation-over-automated-guard choice, matching the
+"card values are baked into the art" note in **Change balance** above — do
+not add a runtime check that cross-references card art text against
+`ComboRule`.
+
 ## Timing rules that are easy to get wrong
 
 This asymmetry is deliberate and the easiest thing in the codebase to break
