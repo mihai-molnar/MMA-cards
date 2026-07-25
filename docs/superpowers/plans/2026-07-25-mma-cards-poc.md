@@ -2894,6 +2894,9 @@ No magic numbers anywhere else.
 - Integer helpers: `mini()`, `maxi()`, `floori()` — not the float versions.
 - UI text is ASCII. The default font renders no emoji or symbol glyphs, so use
   `ATTACK 12`, not a sword icon.
+- Commit Godot's `.uid` sidecars (`<name>.gd.uid`) — project assets, not build
+  artifacts. Stage with `git add -A` so none are left untracked; a `.uid`
+  tracked on one branch but untracked on another aborts a merge.
 - Tests are suites in `tests/suites/`, auto-discovered by the runner: any
   `test_*.gd` file there is picked up and run in sorted order. There is no
   registry to edit. Every suite starts with exactly this preamble:
