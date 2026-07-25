@@ -95,15 +95,23 @@ CLAUDE.md                                                                 (Task 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `TestRunner` (the `SceneTree` script) exposing `check(condition: bool, message: String) -> void` and `check_eq(actual: Variant, expected: Variant, message: String) -> void`. Every later suite is a `RefCounted` script with a local `const TestRunner := preload("res://tests/run_tests.gd")` and `func run(t: TestRunner) -> void`. Suites are registered by adding their path to the `SUITES` const array in `tests/run_tests.gd`.
+- Produces: `TestRunner` (the `SceneTree` script) exposing `check(condition: bool, message: String) -> void` and `check_eq(actual: Variant, expected: Variant, message: String) -> void`. Every later suite is a `RefCounted` script with a local `const TestRunner := preload("res://tests/run_tests.gd")` and `func run(t: TestRunner) -> void`. Suites are auto-discovered: the runner scans `tests/suites/` for `test_*.gd` and runs them in sorted order. Creating the file is all the registration there is — no shared file to edit, which is what lets independent tasks run in parallel without colliding.
 
-> **Amended during implementation.** Two defects surfaced that this task's
-> original code did not anticipate, both now reflected in Global Constraints:
-> the mandatory `--import` step before tests, and a load guard so a suite that
-> fails to parse reports a failure instead of hanging the run forever. See
-> `.superpowers/sdd/2026-07-25-mma-cards-poc/task-1-report.md` for the
+> **Amended during implementation.** Three changes the original code did not
+> anticipate, all now reflected in Global Constraints:
+> 1. The mandatory `--import` step before tests (global `class_name` resolution
+>    depends on a gitignored cache).
+> 2. A load guard, so a suite that fails to parse reports a failure instead of
+>    hanging the run forever.
+> 3. **Suite auto-discovery** replacing the hand-edited `SUITES` array. The
+>    runner scans `tests/suites/` for `test_*.gd` and runs them in sorted order.
+>    This removes the one file every task would otherwise have to edit — which
+>    is what allows independent tasks to run in parallel without colliding — and
+>    eliminates the mistyped-path failure mode entirely.
+>
+> See `.superpowers/sdd/2026-07-25-mma-cards-poc/task-1-report.md` for the
 > reproductions. The code below is the original; the committed version carries
-> those two fixes.
+> all three changes.
 
 - [ ] **Step 1: Write the harness self-test suite**
 
@@ -214,7 +222,6 @@ git commit -m "test: add headless test runner and suite registry"
 - Create: `scripts/core/battle_config.gd`
 - Create: `scripts/core/status_bag.gd`
 - Create: `tests/suites/test_status_bag.gd`
-- Modify: `tests/run_tests.gd` (add suite to `SUITES`)
 
 **Interfaces:**
 - Consumes: `TestRunner` from Task 1.
@@ -280,14 +287,8 @@ func _test_clear(t) -> void:
 	t.check_eq(bag.get_stacks(&"strength"), 0, "clear() removes everything")
 ```
 
-Register it in `tests/run_tests.gd`:
-
-```gdscript
-const SUITES: Array = [
-	"res://tests/suites/test_harness.gd",
-	"res://tests/suites/test_status_bag.gd",
-]
-```
+No registration step: the runner auto-discovers any `test_*.gd` in
+`tests/suites/`. Creating the file is all it takes.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -409,7 +410,6 @@ git commit -m "feat: add battle config constants and status bag with turn expiry
 - Create: `scripts/core/statuses/strength.gd`
 - Create: `scripts/core/status_registry.gd`
 - Create: `tests/suites/test_status_registry.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `StatusBag`, `BattleConfig`.
@@ -451,8 +451,6 @@ func _test_registry_dispatch(t) -> void:
 	bag.apply(&"unregistered_status", 5, 2)
 	t.check_eq(StatusRegistry.modify_outgoing(bag, 8), 12, "unregistered status is ignored, not crashing")
 ```
-
-Register the suite in `SUITES` after `test_status_bag.gd`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -543,7 +541,6 @@ git commit -m "feat: add strength status and registry dispatch"
 **Files:**
 - Create: `scripts/core/fighter.gd`
 - Create: `tests/suites/test_fighter.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `StatusBag`, `BattleConfig`.
@@ -605,8 +602,6 @@ func _test_reset(t) -> void:
 	t.check_eq(f.guard, 0, "reset clears guard")
 	t.check_eq(f.statuses.get_stacks(StrengthStatus.ID), 0, "reset clears statuses")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -685,7 +680,6 @@ git commit -m "feat: add Fighter with guard absorption and hp floor"
 **Files:**
 - Create: `scripts/core/combat.gd`
 - Create: `tests/suites/test_combat.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `Fighter`, `StatusRegistry`.
@@ -779,8 +773,6 @@ func _test_preview(t) -> void:
 	t.check_eq(Combat.preview_damage(8, enemy), 12, "preview reflects strength for the intent display")
 ```
 
-Register the suite in `SUITES`.
-
 - [ ] **Step 2: Run to verify it fails**
 
 Expected: FAIL — `Identifier "Combat" not declared in the current scope`.
@@ -845,7 +837,6 @@ git commit -m "feat: add single damage pipeline with guard and status modifiers"
 - Create: `scripts/core/effects/apply_status_effect.gd`
 - Create: `scripts/core/card_data.gd`
 - Create: `tests/suites/test_effects.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `Fighter`, `Combat`, `BattleConfig`.
@@ -944,8 +935,6 @@ func _test_card_data(t) -> void:
 	blocker.effects = [guard] as Array[CardEffect]
 	t.check_eq(blocker.total_base_damage(), 0, "a card with no damage effects reports 0")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1086,7 +1075,6 @@ git commit -m "feat: add composable card effects and CardData resource"
 **Files:**
 - Create: `scripts/core/combo_rule.gd`
 - Create: `tests/suites/test_combo_rule.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `BattleConfig`.
@@ -1151,8 +1139,6 @@ func run(t: TestRunner) -> void:
 	# A longer history still matches on its tail.
 	t.check_eq(rule.evaluate([_jab(), _straight(), _jab()], _straight()), 7, "a second combo in the same turn still triggers")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1235,7 +1221,6 @@ git commit -m "feat: add tag-sequence combo rule"
 - Create: `resources/cards/block.tres` (generated)
 - Create: `scripts/core/card_library.gd`
 - Create: `tests/suites/test_card_library.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `DamageEffect`, `GuardEffect`, `BattleConfig`.
@@ -1289,8 +1274,6 @@ func _test_starting_deck(t) -> void:
 	# let per-card state leak between copies later.
 	t.check(deck[0] != deck[1] or deck[0].id != deck[1].id, "deck entries are separate instances")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1438,7 +1421,6 @@ git commit -m "feat: generate card resources and add card library"
 **Files:**
 - Create: `scripts/core/deck.gd`
 - Create: `tests/suites/test_deck.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `CardLibrary`, `BattleConfig`.
@@ -1515,8 +1497,6 @@ func _test_take_from_hand(t) -> void:
 	t.check_eq(deck.total_cards(), 12, "playing conserves the card count")
 	t.check(deck.take_from_hand(99) == null, "an out-of-range index returns null safely")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1616,7 +1596,6 @@ git commit -m "feat: add deck with draw, discard, and reshuffle"
 **Files:**
 - Create: `scripts/core/enemy_brain.gd`
 - Create: `tests/suites/test_enemy_brain.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardEffect`, `DamageEffect`, `GuardEffect`, `ApplyStatusEffect`, `Fighter`, `Combat`, `BattleConfig`.
@@ -1698,8 +1677,6 @@ func _test_reset(t) -> void:
 	brain.reset()
 	t.check_eq(brain.current_action, EnemyBrain.Action.ATTACK, "reset returns to the start of the cycle")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1785,7 +1762,6 @@ git commit -m "feat: add enemy brain with telegraphed intent cycle"
 **Files:**
 - Create: `scripts/core/battle_state.gd`
 - Create: `tests/suites/test_battle_turns.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: everything from Tasks 2-10.
@@ -1886,8 +1862,6 @@ func _test_enemy_guard_timing(t) -> void:
 	battle.end_turn()
 	t.check_eq(battle.enemy.guard, 0, "enemy guard clears at the start of its next turn")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -2048,7 +2022,6 @@ git commit -m "feat: add battle state turn machine with AP and guard timing"
 **Files:**
 - Modify: `scripts/core/battle_state.gd`
 - Create: `tests/suites/test_battle_combat.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `BattleState` from Task 11.
@@ -2164,8 +2137,6 @@ func _test_loss(t) -> void:
 	t.check_eq(won[0], false, "the player is reported as the loser")
 ```
 
-Register the suite in `SUITES`.
-
 - [ ] **Step 2: Run to verify it fails**
 
 Expected: FAIL — the enemy-turn checks (`_test_buff_timing_across_turns`, `_test_loss`) fail because the intent is never executed, plus the two guard-timing failures still outstanding from Task 11.
@@ -2243,7 +2214,6 @@ git commit -m "feat: execute enemy intents, wire combos, and end the battle"
 - Create: `scripts/ui/card_view.gd`
 - Create: `scripts/ui/hand_view.gd`
 - Create: `tests/suites/test_card_view.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `BattleState`.
@@ -2322,8 +2292,6 @@ func _test_hand_view_rebuild(t) -> void:
 
 	hand.free()
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -2907,8 +2875,9 @@ No magic numbers anywhere else.
 - Integer helpers: `mini()`, `maxi()`, `floori()` — not the float versions.
 - UI text is ASCII. The default font renders no emoji or symbol glyphs, so use
   `ATTACK 12`, not a sword icon.
-- Tests are suites in `tests/suites/`, registered in the `SUITES` array in
-  `tests/run_tests.gd`. Every suite starts with exactly this preamble:
+- Tests are suites in `tests/suites/`, auto-discovered by the runner: any
+  `test_*.gd` file there is picked up and run in sorted order. There is no
+  registry to edit. Every suite starts with exactly this preamble:
   ```gdscript
   extends RefCounted
 
