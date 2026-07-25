@@ -24,11 +24,11 @@ func _build_ui() -> void:
 	layer.add_child(hud)
 
 	hand_view = HandView.new()
-	hand_view.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	hand_view.offset_top = -200
-	hand_view.offset_bottom = -20
 	hand_view.card_chosen.connect(_on_card_chosen)
 	hud.add_child(hand_view)
+
+	# Attacks fly at the enemy, Block pulls back to the player.
+	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
 
 	hud.bring_result_panel_to_front()
 
@@ -63,6 +63,9 @@ func _on_end_turn_pressed() -> void:
 	battle.end_turn()
 
 func _on_battle_over(player_won: bool) -> void:
+	# Drop any lifted card before the banner appears, so nothing is left raised
+	# behind it.
+	hand_view.clear_hover()
 	hud.show_result(player_won)
 	hand_view.refresh_states(battle)
 
