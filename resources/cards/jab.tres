@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/card_effect.gd" id="1_eyasc"]
+[ext_resource type="Script" path="res://scripts/core/effects/damage_effect.gd" id="2_1jw65"]
+[ext_resource type="Script" path="res://scripts/core/card_data.gd" id="3_oc55g"]
+
+[sub_resource type="Resource" id="Resource_e24vp"]
+script = ExtResource("2_1jw65")
+amount = 6
+
+[resource]
+script = ExtResource("3_oc55g")
+id = &"jab"
+display_name = "JAB"
+cost = 1
+tags = Array[StringName]([&"jab", &"attack"])
+effects = Array[ExtResource("1_eyasc")]([SubResource("Resource_e24vp")])
+rules_text = "Deal 6 damage."

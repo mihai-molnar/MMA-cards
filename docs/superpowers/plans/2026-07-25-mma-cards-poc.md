@@ -11,13 +11,48 @@
 ## Global Constraints
 
 - Godot binary: `/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot` — **path contains a space, always quote it**.
-- Test command: `"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --headless --path . --script res://tests/run_tests.gd`
+- **Test command — always this, and only this:**
+  ```bash
+  ./tests/run_tests.sh
+  ```
+  **Never invoke `run_tests.gd` directly.** GDScript has no catchable
+  exceptions: when a runtime error occurs partway through a suite (a typo'd
+  call, a null deref), the engine aborts that suite's body and the runner
+  reports `PASS` with exit 0 — the remaining assertions silently never run.
+  Verified: a suite with `t.chekc(...)` reports `4 checks, 0 failures / PASS`.
+  The wrapper is what makes the result trustworthy — it fails on engine error
+  markers in the output as well as on a non-zero exit code.
+
+  The wrapper also runs the **mandatory** `--import` step first. Godot resolves
+  `class_name` globals through `.godot/global_script_class_cache.cfg`, which
+  only the editor or an explicit `--import` writes — and `.godot/` is
+  gitignored. Without it, every suite referencing a newly added class fails to
+  load with `Identifier "X" not declared in the current scope`. Verified
+  empirically on a cache-less checkout.
+- **Every test suite starts with exactly this preamble:**
+  ```gdscript
+  extends RefCounted
+
+  const TestRunner := preload("res://tests/run_tests.gd")
+
+  func run(t: TestRunner) -> void:
+  ```
+  Reference game classes (`Fighter`, `Combat`, `BattleConfig`, …) directly by
+  their global names — the `--import` step is what makes those resolve. The local
+  `preload` const is only for `TestRunner` itself, so the runner's type resolves
+  even before an import has run.
 - All GDScript is **typed**: explicit parameter and return types on every function.
 - Naming: `PascalCase` for `class_name`, `snake_case` for members and functions, leading `_` for private.
 - `scripts/core/` must never reference `Node`, `SceneTree`, or any scene-tree API. If a change seems to require it, the change belongs in `scripts/ui/`.
 - Balance constants live only in `scripts/core/battle_config.gd`. No magic numbers elsewhere.
 - Use Godot 4 integer helpers: `mini()`, `maxi()`, `floori()` — not `min()`/`max()`/`floor()` where ints are intended.
 - UI text is ASCII only. Godot's default font does not render `⚔`/`🛡`/`↑`; use `ATTACK 12`, `BLOCK 8`, `BUFF +2 STR`.
+- **Commit Godot's `.uid` sidecars.** Godot 4.4+ writes a `<name>.gd.uid` beside
+  every script when it imports. These are project assets, not build artifacts —
+  stage with `git add -A` rather than naming files individually, so none are left
+  untracked. Partial `.uid` commits have twice blocked worktree merges in this
+  project; a `.uid` present in one branch but untracked in another aborts the
+  merge outright.
 - Commit after every task.
 
 ## Spec Reference
@@ -72,7 +107,23 @@ CLAUDE.md                                                                 (Task 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `TestRunner` (the `SceneTree` script) exposing `check(condition: bool, message: String) -> void` and `check_eq(actual: Variant, expected: Variant, message: String) -> void`. Every later suite is a `RefCounted` script with `func run(t) -> void` where `t` is the runner. Suites are registered by adding their path to the `SUITES` const array in `tests/run_tests.gd`.
+- Produces: `TestRunner` (the `SceneTree` script) exposing `check(condition: bool, message: String) -> void` and `check_eq(actual: Variant, expected: Variant, message: String) -> void`. Every later suite is a `RefCounted` script with a local `const TestRunner := preload("res://tests/run_tests.gd")` and `func run(t: TestRunner) -> void`. Suites are auto-discovered: the runner scans `tests/suites/` for `test_*.gd` and runs them in sorted order. Creating the file is all the registration there is — no shared file to edit, which is what lets independent tasks run in parallel without colliding.
+
+> **Amended during implementation.** Three changes the original code did not
+> anticipate, all now reflected in Global Constraints:
+> 1. The mandatory `--import` step before tests (global `class_name` resolution
+>    depends on a gitignored cache).
+> 2. A load guard, so a suite that fails to parse reports a failure instead of
+>    hanging the run forever.
+> 3. **Suite auto-discovery** replacing the hand-edited `SUITES` array. The
+>    runner scans `tests/suites/` for `test_*.gd` and runs them in sorted order.
+>    This removes the one file every task would otherwise have to edit — which
+>    is what allows independent tasks to run in parallel without colliding — and
+>    eliminates the mistyped-path failure mode entirely.
+>
+> See `.superpowers/sdd/2026-07-25-mma-cards-poc/task-1-report.md` for the
+> reproductions. The code below is the original; the committed version carries
+> all three changes.
 
 - [ ] **Step 1: Write the harness self-test suite**
 
@@ -81,8 +132,10 @@ Create `tests/suites/test_harness.gd`:
 ```gdscript
 extends RefCounted
 
+const TestRunner := preload("res://tests/run_tests.gd")
+
 ## Proves the runner counts checks and compares values correctly.
-func run(t) -> void:
+func run(t: TestRunner) -> void:
 	t.check(true, "check() accepts a true condition")
 	t.check_eq(2 + 2, 4, "check_eq() compares equal integers")
 	t.check_eq("jab", "jab", "check_eq() compares equal strings")
@@ -92,7 +145,7 @@ func run(t) -> void:
 
 Run:
 ```bash
-"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --headless --path . --script res://tests/run_tests.gd
+./tests/run_tests.sh
 ```
 Expected: FAIL — Godot reports it cannot open `res://tests/run_tests.gd`.
 
@@ -104,7 +157,7 @@ Create `tests/run_tests.gd`:
 extends SceneTree
 
 ## Headless test runner. Add new suites to SUITES.
-## Run: godot --headless --path . --script res://tests/run_tests.gd
+## Run via ./tests/run_tests.sh -- never directly (see Global Constraints).
 
 const SUITES: Array = [
 	"res://tests/suites/test_harness.gd",
@@ -181,7 +234,6 @@ git commit -m "test: add headless test runner and suite registry"
 - Create: `scripts/core/battle_config.gd`
 - Create: `scripts/core/status_bag.gd`
 - Create: `tests/suites/test_status_bag.gd`
-- Modify: `tests/run_tests.gd` (add suite to `SUITES`)
 
 **Interfaces:**
 - Consumes: `TestRunner` from Task 1.
@@ -197,14 +249,16 @@ Create `tests/suites/test_status_bag.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_apply_and_read(t)
 	_test_stacking(t)
 	_test_expiry_countdown(t)
 	_test_permanent(t)
 	_test_clear(t)
 
-func _test_apply_and_read(t) -> void:
+func _test_apply_and_read(t: TestRunner) -> void:
 	var bag := StatusBag.new()
 	t.check_eq(bag.get_stacks(&"strength"), 0, "unknown status reads as 0 stacks")
 	t.check(not bag.has(&"strength"), "unknown status is absent")
@@ -213,13 +267,13 @@ func _test_apply_and_read(t) -> void:
 	t.check(bag.has(&"strength"), "applied status is present")
 	t.check_eq(bag.ids(), [&"strength"], "ids() lists applied statuses")
 
-func _test_stacking(t) -> void:
+func _test_stacking(t: TestRunner) -> void:
 	var bag := StatusBag.new()
 	bag.apply(&"strength", 2, 2)
 	bag.apply(&"strength", 3, 1)
 	t.check_eq(bag.get_stacks(&"strength"), 5, "re-applying adds stacks")
 
-func _test_expiry_countdown(t) -> void:
+func _test_expiry_countdown(t: TestRunner) -> void:
 	# A 2-turn buff must survive the turn it was applied on and expire at the
 	# end of the following turn. This is the enemy buff timing.
 	var bag := StatusBag.new()
@@ -230,7 +284,7 @@ func _test_expiry_countdown(t) -> void:
 	t.check_eq(bag.get_stacks(&"strength"), 0, "2-turn buff expires at the next turn end")
 	t.check(not bag.has(&"strength"), "expired status is removed, not left at 0")
 
-func _test_permanent(t) -> void:
+func _test_permanent(t: TestRunner) -> void:
 	var bag := StatusBag.new()
 	bag.apply(&"strength", 1, -1)
 	bag.tick_turn_end()
@@ -238,21 +292,15 @@ func _test_permanent(t) -> void:
 	bag.tick_turn_end()
 	t.check_eq(bag.get_stacks(&"strength"), 1, "permanent status never expires")
 
-func _test_clear(t) -> void:
+func _test_clear(t: TestRunner) -> void:
 	var bag := StatusBag.new()
 	bag.apply(&"strength", 2, 2)
 	bag.clear()
 	t.check_eq(bag.get_stacks(&"strength"), 0, "clear() removes everything")
 ```
 
-Register it in `tests/run_tests.gd`:
-
-```gdscript
-const SUITES: Array = [
-	"res://tests/suites/test_harness.gd",
-	"res://tests/suites/test_status_bag.gd",
-]
-```
+No registration step: the runner auto-discovers any `test_*.gd` in
+`tests/suites/`. Creating the file is all it takes.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -374,7 +422,6 @@ git commit -m "feat: add battle config constants and status bag with turn expiry
 - Create: `scripts/core/statuses/strength.gd`
 - Create: `scripts/core/status_registry.gd`
 - Create: `tests/suites/test_status_registry.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `StatusBag`, `BattleConfig`.
@@ -390,11 +437,13 @@ Create `tests/suites/test_status_registry.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_strength_math(t)
 	_test_registry_dispatch(t)
 
-func _test_strength_math(t) -> void:
+func _test_strength_math(t: TestRunner) -> void:
 	t.check_eq(StrengthStatus.modify_outgoing_damage(8, 0), 8, "0 strength leaves damage unchanged")
 	t.check_eq(StrengthStatus.modify_outgoing_damage(8, 2), 12, "2 strength turns 8 into 12")
 	t.check_eq(StrengthStatus.modify_outgoing_damage(8, 1), 10, "1 strength turns 8 into 10")
@@ -402,7 +451,7 @@ func _test_strength_math(t) -> void:
 	t.check_eq(StrengthStatus.modify_outgoing_damage(9, 1), 11, "strength bonus floors, never rounds up")
 	t.check_eq(StrengthStatus.modify_incoming_damage(8, 2), 8, "strength does not change incoming damage")
 
-func _test_registry_dispatch(t) -> void:
+func _test_registry_dispatch(t: TestRunner) -> void:
 	var bag := StatusBag.new()
 	t.check_eq(StatusRegistry.modify_outgoing(bag, 8), 8, "empty bag applies no modifiers")
 
@@ -414,8 +463,6 @@ func _test_registry_dispatch(t) -> void:
 	bag.apply(&"unregistered_status", 5, 2)
 	t.check_eq(StatusRegistry.modify_outgoing(bag, 8), 12, "unregistered status is ignored, not crashing")
 ```
-
-Register the suite in `SUITES` after `test_status_bag.gd`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -506,7 +553,6 @@ git commit -m "feat: add strength status and registry dispatch"
 **Files:**
 - Create: `scripts/core/fighter.gd`
 - Create: `tests/suites/test_fighter.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `StatusBag`, `BattleConfig`.
@@ -519,13 +565,15 @@ Create `tests/suites/test_fighter.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_initial_state(t)
 	_test_guard(t)
 	_test_hp_loss(t)
 	_test_reset(t)
 
-func _test_initial_state(t) -> void:
+func _test_initial_state(t: TestRunner) -> void:
 	var f := Fighter.new("Player", BattleConfig.PLAYER_MAX_HP)
 	t.check_eq(f.display_name, "Player", "fighter keeps its display name")
 	t.check_eq(f.hp, 50, "fighter starts at full hp")
@@ -533,7 +581,7 @@ func _test_initial_state(t) -> void:
 	t.check_eq(f.guard, 0, "fighter starts with no guard")
 	t.check(f.is_alive(), "fighter starts alive")
 
-func _test_guard(t) -> void:
+func _test_guard(t: TestRunner) -> void:
 	var f := Fighter.new("Player", 50)
 	f.add_guard(5)
 	t.check_eq(f.guard, 5, "add_guard raises guard")
@@ -547,7 +595,7 @@ func _test_guard(t) -> void:
 	f.expire_guard()
 	t.check_eq(f.guard, 0, "expire_guard clears guard")
 
-func _test_hp_loss(t) -> void:
+func _test_hp_loss(t: TestRunner) -> void:
 	var f := Fighter.new("Enemy", 48)
 	t.check_eq(f.apply_hp_loss(6), 6, "apply_hp_loss returns hp actually lost")
 	t.check_eq(f.hp, 42, "hp drops by the loss")
@@ -556,7 +604,7 @@ func _test_hp_loss(t) -> void:
 	t.check_eq(f.hp, 0, "hp floors at 0, never negative")
 	t.check(not f.is_alive(), "fighter at 0 hp is not alive")
 
-func _test_reset(t) -> void:
+func _test_reset(t: TestRunner) -> void:
 	var f := Fighter.new("Player", 50)
 	f.apply_hp_loss(20)
 	f.add_guard(5)
@@ -566,8 +614,6 @@ func _test_reset(t) -> void:
 	t.check_eq(f.guard, 0, "reset clears guard")
 	t.check_eq(f.statuses.get_stacks(StrengthStatus.ID), 0, "reset clears statuses")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -646,7 +692,6 @@ git commit -m "feat: add Fighter with guard absorption and hp floor"
 **Files:**
 - Create: `scripts/core/combat.gd`
 - Create: `tests/suites/test_combat.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `Fighter`, `StatusRegistry`.
@@ -660,7 +705,9 @@ Create `tests/suites/test_combat.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_plain_damage(t)
 	_test_guard_absorption(t)
 	_test_guard_spillover(t)
@@ -671,7 +718,7 @@ func run(t) -> void:
 func _make_pair() -> Array:
 	return [Fighter.new("Player", 50), Fighter.new("Enemy", 48)]
 
-func _test_plain_damage(t) -> void:
+func _test_plain_damage(t: TestRunner) -> void:
 	var pair: Array = _make_pair()
 	var player: Fighter = pair[0]
 	var enemy: Fighter = pair[1]
@@ -681,7 +728,7 @@ func _test_plain_damage(t) -> void:
 	t.check_eq(result.hp_loss, 6, "all damage reaches hp")
 	t.check_eq(enemy.hp, 42, "enemy 48 takes a jab down to 42")
 
-func _test_guard_absorption(t) -> void:
+func _test_guard_absorption(t: TestRunner) -> void:
 	var pair: Array = _make_pair()
 	var player: Fighter = pair[0]
 	var enemy: Fighter = pair[1]
@@ -692,7 +739,7 @@ func _test_guard_absorption(t) -> void:
 	t.check_eq(enemy.guard, 2, "guard is reduced by what it absorbed")
 	t.check_eq(enemy.hp, 48, "enemy hp unchanged behind guard")
 
-func _test_guard_spillover(t) -> void:
+func _test_guard_spillover(t: TestRunner) -> void:
 	var pair: Array = _make_pair()
 	var player: Fighter = pair[0]
 	var enemy: Fighter = pair[1]
@@ -703,7 +750,7 @@ func _test_guard_spillover(t) -> void:
 	t.check_eq(enemy.guard, 0, "guard is spent")
 	t.check_eq(enemy.hp, 40, "enemy takes the spillover")
 
-func _test_strength_applied(t) -> void:
+func _test_strength_applied(t: TestRunner) -> void:
 	var pair: Array = _make_pair()
 	var player: Fighter = pair[0]
 	var enemy: Fighter = pair[1]
@@ -716,11 +763,12 @@ func _test_strength_applied(t) -> void:
 	var pair2: Array = _make_pair()
 	var player2: Fighter = pair2[0]
 	var enemy2: Fighter = pair2[1]
+	enemy2.statuses.apply(StrengthStatus.ID, 2, 2)
 	player2.add_guard(5)
 	Combat.resolve_damage(8, enemy2, player2)
-	t.check_eq(player2.hp, 43, "guard 5 vs unbuffed 8 leaves 3 through")
+	t.check_eq(player2.hp, 43, "guard 5 vs buffed 12 leaves 7 through")
 
-func _test_clamping(t) -> void:
+func _test_clamping(t: TestRunner) -> void:
 	var pair: Array = _make_pair()
 	var player: Fighter = pair[0]
 	var enemy: Fighter = pair[1]
@@ -731,14 +779,12 @@ func _test_clamping(t) -> void:
 	Combat.resolve_damage(999, player, enemy)
 	t.check_eq(enemy.hp, 0, "overkill floors hp at 0")
 
-func _test_preview(t) -> void:
+func _test_preview(t: TestRunner) -> void:
 	var enemy := Fighter.new("Enemy", 48)
 	t.check_eq(Combat.preview_damage(8, enemy), 8, "preview of an unbuffed attack is 8")
 	enemy.statuses.apply(StrengthStatus.ID, 2, 2)
 	t.check_eq(Combat.preview_damage(8, enemy), 12, "preview reflects strength for the intent display")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -804,7 +850,6 @@ git commit -m "feat: add single damage pipeline with guard and status modifiers"
 - Create: `scripts/core/effects/apply_status_effect.gd`
 - Create: `scripts/core/card_data.gd`
 - Create: `tests/suites/test_effects.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `Fighter`, `Combat`, `BattleConfig`.
@@ -826,7 +871,9 @@ Create `tests/suites/test_effects.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_damage_effect(t)
 	_test_bonus_consumed_once(t)
 	_test_guard_effect(t)
@@ -836,7 +883,7 @@ func run(t) -> void:
 func _new_context(bonus: int) -> Dictionary:
 	return {"bonus_damage": bonus, "results": [], "log": []}
 
-func _test_damage_effect(t) -> void:
+func _test_damage_effect(t: TestRunner) -> void:
 	var player := Fighter.new("Player", 50)
 	var enemy := Fighter.new("Enemy", 48)
 	var effect := DamageEffect.new()
@@ -846,7 +893,7 @@ func _test_damage_effect(t) -> void:
 	t.check_eq(enemy.hp, 42, "damage effect routes through the pipeline")
 	t.check_eq(context["results"].size(), 1, "damage effect records its result")
 
-func _test_bonus_consumed_once(t) -> void:
+func _test_bonus_consumed_once(t: TestRunner) -> void:
 	var player := Fighter.new("Player", 50)
 	var enemy := Fighter.new("Enemy", 48)
 	var effect := DamageEffect.new()
@@ -862,7 +909,7 @@ func _test_bonus_consumed_once(t) -> void:
 	effect2.apply(player, enemy, context)
 	t.check_eq(enemy.hp, 48 - 16 - 9, "a second hit deals plain damage")
 
-func _test_guard_effect(t) -> void:
+func _test_guard_effect(t: TestRunner) -> void:
 	var player := Fighter.new("Player", 50)
 	var enemy := Fighter.new("Enemy", 48)
 	var effect := GuardEffect.new()
@@ -871,7 +918,7 @@ func _test_guard_effect(t) -> void:
 	t.check_eq(player.guard, 5, "guard effect protects the source")
 	t.check_eq(enemy.guard, 0, "guard effect does not touch the target")
 
-func _test_apply_status_effect(t) -> void:
+func _test_apply_status_effect(t: TestRunner) -> void:
 	var enemy := Fighter.new("Enemy", 48)
 	var player := Fighter.new("Player", 50)
 	var effect := ApplyStatusEffect.new()
@@ -883,7 +930,7 @@ func _test_apply_status_effect(t) -> void:
 	t.check_eq(enemy.statuses.get_stacks(StrengthStatus.ID), 2, "self-targeted status lands on the source")
 	t.check_eq(player.statuses.get_stacks(StrengthStatus.ID), 0, "self-targeted status spares the target")
 
-func _test_card_data(t) -> void:
+func _test_card_data(t: TestRunner) -> void:
 	var card := CardData.new()
 	card.id = &"straight"
 	card.display_name = "STRAIGHT"
@@ -901,8 +948,6 @@ func _test_card_data(t) -> void:
 	blocker.effects = [guard] as Array[CardEffect]
 	t.check_eq(blocker.total_base_damage(), 0, "a card with no damage effects reports 0")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1043,7 +1088,6 @@ git commit -m "feat: add composable card effects and CardData resource"
 **Files:**
 - Create: `scripts/core/combo_rule.gd`
 - Create: `tests/suites/test_combo_rule.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `BattleConfig`.
@@ -1056,6 +1100,8 @@ Create `tests/suites/test_combo_rule.gd`:
 
 ```gdscript
 extends RefCounted
+
+const TestRunner := preload("res://tests/run_tests.gd")
 
 func _card(card_id: StringName, tag: StringName, damage: int) -> CardData:
 	var card := CardData.new()
@@ -1082,7 +1128,7 @@ func _block() -> CardData:
 	card.effects = [effect] as Array[CardEffect]
 	return card
 
-func run(t) -> void:
+func run(t: TestRunner) -> void:
 	var rule := ComboRule.jab_straight()
 
 	# The headline case: jab then straight is 6 + 9 + floor(15 * 0.5) = 22 total.
@@ -1106,8 +1152,6 @@ func run(t) -> void:
 	# A longer history still matches on its tail.
 	t.check_eq(rule.evaluate([_jab(), _straight(), _jab()], _straight()), 7, "a second combo in the same turn still triggers")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1190,7 +1234,6 @@ git commit -m "feat: add tag-sequence combo rule"
 - Create: `resources/cards/block.tres` (generated)
 - Create: `scripts/core/card_library.gd`
 - Create: `tests/suites/test_card_library.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `DamageEffect`, `GuardEffect`, `BattleConfig`.
@@ -1205,11 +1248,13 @@ Create `tests/suites/test_card_library.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_cards_load(t)
 	_test_starting_deck(t)
 
-func _test_cards_load(t) -> void:
+func _test_cards_load(t: TestRunner) -> void:
 	var jab: CardData = CardLibrary.load_card(&"jab")
 	t.check(jab != null, "jab.tres loads")
 	t.check_eq(jab.cost, 1, "jab costs 1 AP")
@@ -1227,7 +1272,7 @@ func _test_cards_load(t) -> void:
 	t.check_eq(blocker.effects.size(), 1, "block has one effect")
 	t.check_eq((blocker.effects[0] as GuardEffect).amount, 5, "block grants 5 guard")
 
-func _test_starting_deck(t) -> void:
+func _test_starting_deck(t: TestRunner) -> void:
 	var deck: Array[CardData] = CardLibrary.build_starting_deck()
 	t.check_eq(deck.size(), 12, "starting deck holds 12 cards")
 
@@ -1242,8 +1287,6 @@ func _test_starting_deck(t) -> void:
 	# let per-card state leak between copies later.
 	t.check(deck[0] != deck[1] or deck[0].id != deck[1].id, "deck entries are separate instances")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1391,7 +1434,6 @@ git commit -m "feat: generate card resources and add card library"
 **Files:**
 - Create: `scripts/core/deck.gd`
 - Create: `tests/suites/test_deck.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `CardLibrary`, `BattleConfig`.
@@ -1405,7 +1447,9 @@ Create `tests/suites/test_deck.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_initial_state(t)
 	_test_draw(t)
 	_test_conservation(t)
@@ -1415,21 +1459,21 @@ func run(t) -> void:
 func _new_deck() -> Deck:
 	return Deck.new(CardLibrary.build_starting_deck(), 12345)
 
-func _test_initial_state(t) -> void:
+func _test_initial_state(t: TestRunner) -> void:
 	var deck: Deck = _new_deck()
 	t.check_eq(deck.total_cards(), 12, "deck starts with 12 cards")
 	t.check_eq(deck.draw_pile.size(), 12, "all cards start in the draw pile")
 	t.check_eq(deck.hand.size(), 0, "hand starts empty")
 	t.check_eq(deck.discard_pile.size(), 0, "discard starts empty")
 
-func _test_draw(t) -> void:
+func _test_draw(t: TestRunner) -> void:
 	var deck: Deck = _new_deck()
 	t.check_eq(deck.draw(5), 5, "draw reports how many it drew")
 	t.check_eq(deck.hand.size(), 5, "hand holds 5 after a draw")
 	t.check_eq(deck.draw_pile.size(), 7, "draw pile drops to 7")
 	t.check_eq(deck.total_cards(), 12, "drawing conserves the card count")
 
-func _test_conservation(t) -> void:
+func _test_conservation(t: TestRunner) -> void:
 	var deck: Deck = _new_deck()
 	for _turn: int in range(6):
 		deck.draw(BattleConfig.HAND_SIZE)
@@ -1438,7 +1482,7 @@ func _test_conservation(t) -> void:
 		t.check_eq(deck.total_cards(), 12, "card count stays 12 after discarding")
 		t.check_eq(deck.hand.size(), 0, "discard_hand empties the hand")
 
-func _test_reshuffle(t) -> void:
+func _test_reshuffle(t: TestRunner) -> void:
 	var deck: Deck = _new_deck()
 	# Turn 1: 12 -> draw 5 -> draw pile 7, discard 5
 	deck.draw(5)
@@ -1456,7 +1500,7 @@ func _test_reshuffle(t) -> void:
 	t.check_eq(deck.draw_pile.size(), 7, "remaining cards return to the draw pile")
 	t.check_eq(deck.total_cards(), 12, "reshuffling conserves the card count")
 
-func _test_take_from_hand(t) -> void:
+func _test_take_from_hand(t: TestRunner) -> void:
 	var deck: Deck = _new_deck()
 	deck.draw(5)
 	var card: CardData = deck.take_from_hand(2)
@@ -1466,8 +1510,6 @@ func _test_take_from_hand(t) -> void:
 	t.check_eq(deck.total_cards(), 12, "playing conserves the card count")
 	t.check(deck.take_from_hand(99) == null, "an out-of-range index returns null safely")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1567,7 +1609,6 @@ git commit -m "feat: add deck with draw, discard, and reshuffle"
 **Files:**
 - Create: `scripts/core/enemy_brain.gd`
 - Create: `tests/suites/test_enemy_brain.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardEffect`, `DamageEffect`, `GuardEffect`, `ApplyStatusEffect`, `Fighter`, `Combat`, `BattleConfig`.
@@ -1582,13 +1623,15 @@ Create `tests/suites/test_enemy_brain.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_cycle_order(t)
 	_test_effects(t)
 	_test_intent_text(t)
 	_test_reset(t)
 
-func _test_cycle_order(t) -> void:
+func _test_cycle_order(t: TestRunner) -> void:
 	var brain := EnemyBrain.new()
 	t.check_eq(brain.current_action, EnemyBrain.Action.ATTACK, "the enemy opens by attacking")
 	brain.advance()
@@ -1598,7 +1641,7 @@ func _test_cycle_order(t) -> void:
 	brain.advance()
 	t.check_eq(brain.current_action, EnemyBrain.Action.ATTACK, "the cycle wraps back to attack")
 
-func _test_effects(t) -> void:
+func _test_effects(t: TestRunner) -> void:
 	var enemy := Fighter.new("Enemy", 48)
 	var player := Fighter.new("Player", 50)
 	var context: Dictionary = {"bonus_damage": 0, "results": [], "log": []}
@@ -1627,7 +1670,7 @@ func _test_effects(t) -> void:
 		effect.apply(enemy, player, context)
 	t.check_eq(player.hp, 42 - 12, "the attack after a buff deals 12")
 
-func _test_intent_text(t) -> void:
+func _test_intent_text(t: TestRunner) -> void:
 	var enemy := Fighter.new("Enemy", 48)
 	var brain := EnemyBrain.new()
 	t.check_eq(brain.intent_text(enemy), "ATTACK 8", "unbuffed attack telegraphs 8")
@@ -1640,15 +1683,13 @@ func _test_intent_text(t) -> void:
 	brain.advance()
 	t.check_eq(brain.intent_text(enemy), "BUFF +2 STR", "buff intent shows the strength gain")
 
-func _test_reset(t) -> void:
+func _test_reset(t: TestRunner) -> void:
 	var brain := EnemyBrain.new()
 	brain.advance()
 	brain.advance()
 	brain.reset()
 	t.check_eq(brain.current_action, EnemyBrain.Action.ATTACK, "reset returns to the start of the cycle")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1734,7 +1775,6 @@ git commit -m "feat: add enemy brain with telegraphed intent cycle"
 **Files:**
 - Create: `scripts/core/battle_state.gd`
 - Create: `tests/suites/test_battle_turns.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: everything from Tasks 2-10.
@@ -1751,7 +1791,9 @@ Create `tests/suites/test_battle_turns.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_start(t)
 	_test_turn_counter(t)
 	_test_ap(t)
@@ -1763,7 +1805,7 @@ func _new_battle() -> BattleState:
 	battle.start()
 	return battle
 
-func _test_start(t) -> void:
+func _test_start(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	t.check_eq(battle.turn_number, 1, "the player's first turn is turn 1")
 	t.check_eq(battle.player.hp, 50, "player starts at 50 hp")
@@ -1772,7 +1814,7 @@ func _test_start(t) -> void:
 	t.check_eq(battle.deck.hand.size(), 5, "the opening hand holds 5 cards")
 	t.check(not battle.is_over, "the battle is not over at the start")
 
-func _test_turn_counter(t) -> void:
+func _test_turn_counter(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	battle.end_turn()
 	t.check_eq(battle.turn_number, 2, "ending a turn advances the counter once, not twice")
@@ -1783,7 +1825,7 @@ func _test_turn_counter(t) -> void:
 	battle.restart()
 	t.check_eq(battle.turn_number, 1, "restart returns to turn 1")
 
-func _test_ap(t) -> void:
+func _test_ap(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	# Stack a known hand: two straights (2 AP each) and a jab.
 	battle.deck.hand = [
@@ -1807,7 +1849,7 @@ func _test_ap(t) -> void:
 	t.check_eq(battle.ap, 3, "AP resets to 3 at the start of the next turn")
 	t.check_eq(battle.deck.hand.size(), 5, "a fresh hand of 5 is drawn")
 
-func _test_player_guard_timing(t) -> void:
+func _test_player_guard_timing(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	battle.deck.hand = [CardLibrary.load_card(&"block")] as Array[CardData]
 	battle.play_card(0)
@@ -1819,7 +1861,7 @@ func _test_player_guard_timing(t) -> void:
 	t.check_eq(battle.player.hp, 47, "player guard absorbed 5 of the enemy's 8 damage")
 	t.check_eq(battle.player.guard, 0, "guard clears at the start of the player's next turn")
 
-func _test_enemy_guard_timing(t) -> void:
+func _test_enemy_guard_timing(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	battle.end_turn()   # enemy attacks, now intends to block
 	battle.end_turn()   # enemy blocks -> gains 8 guard
@@ -1833,8 +1875,6 @@ func _test_enemy_guard_timing(t) -> void:
 	battle.end_turn()
 	t.check_eq(battle.enemy.guard, 0, "enemy guard clears at the start of its next turn")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1995,7 +2035,6 @@ git commit -m "feat: add battle state turn machine with AP and guard timing"
 **Files:**
 - Modify: `scripts/core/battle_state.gd`
 - Create: `tests/suites/test_battle_combat.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `BattleState` from Task 11.
@@ -2008,7 +2047,9 @@ Create `tests/suites/test_battle_combat.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_combo_integration(t)
 	_test_combo_broken(t)
 	_test_buff_timing_across_turns(t)
@@ -2026,7 +2067,7 @@ func _stack_hand(battle: BattleState, ids: Array) -> void:
 		hand.append(CardLibrary.load_card(card_id))
 	battle.deck.hand = hand
 
-func _test_combo_integration(t) -> void:
+func _test_combo_integration(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	_stack_hand(battle, [&"jab", &"straight"])
 
@@ -2039,7 +2080,7 @@ func _test_combo_integration(t) -> void:
 	t.check_eq(battle.enemy.hp, 26, "the combo straight deals 16, taking 48 to 26")
 	t.check_eq(battle.ap, 0, "the combo consumed all 3 AP")
 
-func _test_combo_broken(t) -> void:
+func _test_combo_broken(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	_stack_hand(battle, [&"jab", &"block", &"straight"])
 	battle.play_card(0)   # jab, 1 AP
@@ -2057,7 +2098,7 @@ func _test_combo_broken(t) -> void:
 	battle2.play_card(0)
 	t.check_eq(battle2.enemy.hp, 48 - 6 - 9, "the broken-combo straight deals a plain 9")
 
-func _test_buff_timing_across_turns(t) -> void:
+func _test_buff_timing_across_turns(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	# Enemy cycle: turn 1 attack, turn 2 block, turn 3 buff, turn 4 attack.
 	battle.end_turn()   # enemy attacks for 8
@@ -2079,7 +2120,7 @@ func _test_buff_timing_across_turns(t) -> void:
 	battle.end_turn()   # enemy attacks buffed again
 	t.check_eq(battle.player.hp, 30 - 12, "the next cycle's buffed attack also deals 12")
 
-func _test_win(t) -> void:
+func _test_win(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	var won: Array = []
 	battle.battle_over.connect(func(player_won: bool) -> void: won.append(player_won))
@@ -2095,7 +2136,7 @@ func _test_win(t) -> void:
 
 	t.check(not battle.play_card(0), "cards cannot be played after the battle ends")
 
-func _test_loss(t) -> void:
+func _test_loss(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	var won: Array = []
 	battle.battle_over.connect(func(player_won: bool) -> void: won.append(player_won))
@@ -2108,8 +2149,6 @@ func _test_loss(t) -> void:
 	t.check_eq(won.size(), 1, "battle_over fires exactly once on a loss")
 	t.check_eq(won[0], false, "the player is reported as the loser")
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -2188,7 +2227,6 @@ git commit -m "feat: execute enemy intents, wire combos, and end the battle"
 - Create: `scripts/ui/card_view.gd`
 - Create: `scripts/ui/hand_view.gd`
 - Create: `tests/suites/test_card_view.gd`
-- Modify: `tests/run_tests.gd`
 
 **Interfaces:**
 - Consumes: `CardData`, `BattleState`.
@@ -2205,12 +2243,14 @@ Create `tests/suites/test_card_view.gd`:
 ```gdscript
 extends RefCounted
 
-func run(t) -> void:
+const TestRunner := preload("res://tests/run_tests.gd")
+
+func run(t: TestRunner) -> void:
 	_test_card_view_text(t)
 	_test_affordability(t)
 	_test_hand_view_rebuild(t)
 
-func _test_card_view_text(t) -> void:
+func _test_card_view_text(t: TestRunner) -> void:
 	var card: CardData = CardLibrary.load_card(&"jab")
 	var view: CardView = CardView.create(card)
 	t.check(view != null, "CardView.create returns a view")
@@ -2226,7 +2266,7 @@ func _test_card_view_text(t) -> void:
 	t.check(block_view.debug_text().contains("5"), "the block card shows its guard value")
 	block_view.free()
 
-func _test_affordability(t) -> void:
+func _test_affordability(t: TestRunner) -> void:
 	var card: CardData = CardLibrary.load_card(&"straight")
 	var view: CardView = CardView.create(card)
 	view.set_affordable(true)
@@ -2238,7 +2278,7 @@ func _test_affordability(t) -> void:
 	t.check(view.modulate.a < 1.0, "an unaffordable card is dimmed")
 	view.free()
 
-func _test_hand_view_rebuild(t) -> void:
+func _test_hand_view_rebuild(t: TestRunner) -> void:
 	var battle := BattleState.new(12345)
 	battle.start()
 	battle.deck.hand = [
@@ -2265,8 +2305,6 @@ func _test_hand_view_rebuild(t) -> void:
 
 	hand.free()
 ```
-
-Register the suite in `SUITES`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -2776,9 +2814,24 @@ Run the game:
 
 Run the tests (headless, no window):
 ```bash
-"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --headless --path . --script res://tests/run_tests.gd
+./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit.
+
+**Never invoke `run_tests.gd` directly — it can report a false PASS.**
+GDScript has no catchable exceptions, so a runtime error partway through a
+suite (a typo'd call, a null deref) aborts that suite's body while the runner
+still prints `PASS` and exits 0; the remaining assertions silently never ran.
+The wrapper is what makes the result trustworthy: it fails on engine error
+markers (`SCRIPT ERROR`, `Parse Error`, `Invalid call`) as well as on a
+non-zero exit code.
+
+The wrapper also runs a **mandatory** `--import` first. Godot resolves
+`class_name` globals through `.godot/global_script_class_cache.cfg`, which only
+the editor or an explicit `--import` writes — and `.godot/` is gitignored.
+Without it, suites referencing a newly added class die with
+`Identifier "X" not declared in the current scope`. That is a missing import,
+not a code bug.
 
 Regenerate the card resources after changing card constants:
 ```bash
@@ -2841,8 +2894,25 @@ No magic numbers anywhere else.
 - Integer helpers: `mini()`, `maxi()`, `floori()` — not the float versions.
 - UI text is ASCII. The default font renders no emoji or symbol glyphs, so use
   `ATTACK 12`, not a sword icon.
-- Tests are suites in `tests/suites/`, registered in the `SUITES` array in
-  `tests/run_tests.gd`. Each suite is a `RefCounted` with `func run(t) -> void`.
+- Commit Godot's `.uid` sidecars (`<name>.gd.uid`) — project assets, not build
+  artifacts. Stage with `git add -A` so none are left untracked; a `.uid`
+  tracked on one branch but untracked on another aborts a merge.
+- Tests are suites in `tests/suites/`, auto-discovered by the runner: any
+  `test_*.gd` file there is picked up and run in sorted order. There is no
+  registry to edit. Every suite starts with exactly this preamble:
+  ```gdscript
+  extends RefCounted
+
+  const TestRunner := preload("res://tests/run_tests.gd")
+
+  func run(t: TestRunner) -> void:
+  ```
+  The local `preload` const is only for `TestRunner`, so the runner's type
+  resolves even before an import has run. Game classes are referenced by their
+  global names — `--import` is what makes those resolve.
+- A suite that fails to load is reported as a failure and exits 1, rather than
+  silently passing with zero checks. Do not weaken that guard in
+  `tests/run_tests.gd`; without it a mistyped suite path reads as green.
 
 ## Design docs
 
