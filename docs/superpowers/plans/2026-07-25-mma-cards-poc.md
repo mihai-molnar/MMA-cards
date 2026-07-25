@@ -11,18 +11,24 @@
 ## Global Constraints
 
 - Godot binary: `/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot` — **path contains a space, always quote it**.
-- **Test command — always both lines, in this order:**
+- **Test command — always this, and only this:**
   ```bash
-  GODOT="/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot"
-  "$GODOT" --headless --path . --import >/dev/null 2>&1
-  "$GODOT" --headless --path . --script res://tests/run_tests.gd
+  ./tests/run_tests.sh
   ```
-  The `--import` step is **mandatory, not optional**. Godot resolves `class_name`
-  globals through `.godot/global_script_class_cache.cfg`, which only the editor
-  or an explicit `--import` writes — and `.godot/` is gitignored. Skip the import
-  after adding a script and every suite referencing the new class fails to load
-  with `Identifier "X" not declared in the current scope`. Verified empirically
-  on a cache-less checkout: without `--import` the suite fails; with it, it passes.
+  **Never invoke `run_tests.gd` directly.** GDScript has no catchable
+  exceptions: when a runtime error occurs partway through a suite (a typo'd
+  call, a null deref), the engine aborts that suite's body and the runner
+  reports `PASS` with exit 0 — the remaining assertions silently never run.
+  Verified: a suite with `t.chekc(...)` reports `4 checks, 0 failures / PASS`.
+  The wrapper is what makes the result trustworthy — it fails on engine error
+  markers in the output as well as on a non-zero exit code.
+
+  The wrapper also runs the **mandatory** `--import` step first. Godot resolves
+  `class_name` globals through `.godot/global_script_class_cache.cfg`, which
+  only the editor or an explicit `--import` writes — and `.godot/` is
+  gitignored. Without it, every suite referencing a newly added class fails to
+  load with `Identifier "X" not declared in the current scope`. Verified
+  empirically on a cache-less checkout.
 - **Every test suite starts with exactly this preamble:**
   ```gdscript
   extends RefCounted
@@ -133,7 +139,7 @@ func run(t: TestRunner) -> void:
 
 Run:
 ```bash
-"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --headless --path . --script res://tests/run_tests.gd
+./tests/run_tests.sh
 ```
 Expected: FAIL — Godot reports it cannot open `res://tests/run_tests.gd`.
 
@@ -145,7 +151,7 @@ Create `tests/run_tests.gd`:
 extends SceneTree
 
 ## Headless test runner. Add new suites to SUITES.
-## Run: godot --headless --path . --script res://tests/run_tests.gd
+## Run via ./tests/run_tests.sh -- never directly (see Global Constraints).
 
 const SUITES: Array = [
 	"res://tests/suites/test_harness.gd",
@@ -2799,20 +2805,26 @@ Run the game:
 "/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --path .
 ```
 
-Run the tests (headless, no window) — **both lines, in this order**:
+Run the tests (headless, no window):
 ```bash
-GODOT="/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot"
-"$GODOT" --headless --path . --import >/dev/null 2>&1
-"$GODOT" --headless --path . --script res://tests/run_tests.gd
+./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit.
 
-**The `--import` line is mandatory.** Godot resolves `class_name` globals
-through `.godot/global_script_class_cache.cfg`, which only the editor or an
-explicit `--import` writes — and `.godot/` is gitignored. Skip it after adding
-a script and every suite referencing the new class dies with
-`Identifier "X" not declared in the current scope`. If tests fail with that
-error, you forgot the import; it is not a code bug.
+**Never invoke `run_tests.gd` directly — it can report a false PASS.**
+GDScript has no catchable exceptions, so a runtime error partway through a
+suite (a typo'd call, a null deref) aborts that suite's body while the runner
+still prints `PASS` and exits 0; the remaining assertions silently never ran.
+The wrapper is what makes the result trustworthy: it fails on engine error
+markers (`SCRIPT ERROR`, `Parse Error`, `Invalid call`) as well as on a
+non-zero exit code.
+
+The wrapper also runs a **mandatory** `--import` first. Godot resolves
+`class_name` globals through `.godot/global_script_class_cache.cfg`, which only
+the editor or an explicit `--import` writes — and `.godot/` is gitignored.
+Without it, suites referencing a newly added class die with
+`Identifier "X" not declared in the current scope`. That is a missing import,
+not a code bug.
 
 Regenerate the card resources after changing card constants:
 ```bash
