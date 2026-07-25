@@ -8,7 +8,7 @@ func run(t: TestRunner) -> void:
 	_test_hp_loss(t)
 	_test_reset(t)
 
-func _test_initial_state(t) -> void:
+func _test_initial_state(t: TestRunner) -> void:
 	var f := Fighter.new("Player", BattleConfig.PLAYER_MAX_HP)
 	t.check_eq(f.display_name, "Player", "fighter keeps its display name")
 	t.check_eq(f.hp, 50, "fighter starts at full hp")
@@ -16,7 +16,7 @@ func _test_initial_state(t) -> void:
 	t.check_eq(f.guard, 0, "fighter starts with no guard")
 	t.check(f.is_alive(), "fighter starts alive")
 
-func _test_guard(t) -> void:
+func _test_guard(t: TestRunner) -> void:
 	var f := Fighter.new("Player", 50)
 	f.add_guard(5)
 	t.check_eq(f.guard, 5, "add_guard raises guard")
@@ -30,7 +30,7 @@ func _test_guard(t) -> void:
 	f.expire_guard()
 	t.check_eq(f.guard, 0, "expire_guard clears guard")
 
-func _test_hp_loss(t) -> void:
+func _test_hp_loss(t: TestRunner) -> void:
 	var f := Fighter.new("Enemy", 48)
 	t.check_eq(f.apply_hp_loss(6), 6, "apply_hp_loss returns hp actually lost")
 	t.check_eq(f.hp, 42, "hp drops by the loss")
@@ -39,7 +39,7 @@ func _test_hp_loss(t) -> void:
 	t.check_eq(f.hp, 0, "hp floors at 0, never negative")
 	t.check(not f.is_alive(), "fighter at 0 hp is not alive")
 
-func _test_reset(t) -> void:
+func _test_reset(t: TestRunner) -> void:
 	var f := Fighter.new("Player", 50)
 	f.apply_hp_loss(20)
 	f.add_guard(5)
