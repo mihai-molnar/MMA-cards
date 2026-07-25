@@ -16,6 +16,14 @@ const COLUMNS: int = 4
 const ROWS: int = 3
 const FRAME_STRIDE: int = 2
 
+## The play sequence (anticipation + lunge) now spans Juice.ANTICIPATE_TIME +
+## Juice.LUNGE_TIME = 0.57s -- longer than COLUMNS*ROWS*FRAME_STRIDE covers
+## at the default stride (12 * 2/60.0 = 0.4s). Stride 6 (0.1s apart, 1.2s
+## total across the 4x3 grid) comfortably spans the full 0.57s with room to
+## spare, so the sheet shows the card actually arriving and fading rather
+## than being cut off mid-flight.
+const PLAY_FRAME_STRIDE: int = 6
+
 ## The hit sequence stacks hit-stop, screen shake, a flash, particles and a
 ## tumbling damage number -- more is happening per second than in a hover or
 ## a card play, so it gets a bigger, coarser-grained window to avoid running
@@ -30,6 +38,7 @@ func _initialize() -> void:
 func _run() -> void:
 	await _capture_hover()
 	await _capture_play()
+	await _capture_refan()
 	await _capture_hit()
 	print("contact sheets written to /tmp/juice-sheet-*.png")
 	quit(0)
@@ -89,7 +98,29 @@ func _capture_play() -> void:
 
 	await _capture("play", func() -> void:
 		var view: CardView = scene.hand_view.get_child(0) as CardView
-		view.pressed.emit())
+		view.pressed.emit(), COLUMNS, ROWS, PLAY_FRAME_STRIDE)
+	_free_scene(scene)
+
+## Refan: playing a card from a multi-card hand shows both the lunge AND the
+## remaining cards sliding into their closed-up slots -- _capture_play()
+## above forces a single-card hand specifically so nothing is left behind to
+## re-fan, which isolates the lunge but has nothing to say about
+## HandView.rebuild()'s carried-position slide. Block is played here for the
+## same reason as above: no damage means no hit-stop, shake or flash
+## competing for attention with the re-fan this sequence exists to show.
+func _capture_refan() -> void:
+	var scene: Node = await _new_scene()
+	scene.battle.deck.hand = [
+		CardLibrary.load_card(&"jab"),
+		CardLibrary.load_card(&"block"),
+		CardLibrary.load_card(&"straight"),
+	] as Array[CardData]
+	scene.hand_view.rebuild(scene.battle)
+	await _settle(60)
+
+	await _capture("refan", func() -> void:
+		var view: CardView = scene.hand_view.get_child(1) as CardView
+		view.pressed.emit(), COLUMNS, ROWS, PLAY_FRAME_STRIDE)
 	_free_scene(scene)
 
 ## Hit: the enemy is brought to low hp through the real signal path (Fighter.
@@ -119,15 +150,36 @@ func _settle(frames: int) -> void:
 	for _i: int in range(frames):
 		await process_frame
 
-## Fires `trigger`, then captures columns*rows frames every stride frames and
+## Fires `trigger`, then captures columns*rows frames spaced stride/60.0
+## seconds apart (stride is calibrated in frames at a nominal 60fps) and
 ## tiles them into one image.
+##
+## Paced by real elapsed time (Time.get_ticks_msec()) rather than a raw
+## await-process_frame count: this tool runs non-headless, and how much
+## real time a fixed frame count spans depends on the display's actual
+## refresh rate. Confirmed on this machine -- an external display running
+## at 100Hz, not 60 -- a frame-count stride captured a shorter real-time
+## window than the constants below were sized for, cutting the play
+## sequence off mid-flight instead of showing it arrive and fade. Pacing by
+## wall-clock time keeps each stride's real-world duration the same
+## regardless of refresh rate.
 func _capture(name: String, trigger: Callable,
 		columns: int = COLUMNS, rows: int = ROWS, stride: int = FRAME_STRIDE) -> void:
 	var shots: Array[Image] = []
 	trigger.call()
+	var interval: float = stride / 60.0
+	var next_capture: float = Time.get_ticks_msec() / 1000.0
 	for i: int in range(columns * rows):
-		for _s: int in range(stride):
+		next_capture += interval
+		while (Time.get_ticks_msec() / 1000.0) < next_capture:
 			await process_frame
+		# root.get_texture() can otherwise read a stale render: the viewport's
+		# texture is only guaranteed current as of the last completed draw,
+		# which does not necessarily line up with the process frame that just
+		# elapsed. Confirmed empirically -- without this, several consecutive
+		# captures in the play sequence silently repeated an already-stale
+		# frame instead of advancing, one file:cell to the next.
+		await RenderingServer.frame_post_draw
 		shots.append(root.get_texture().get_image())
 
 	var cell: Vector2i = shots[0].get_size()
@@ -138,5 +190,5 @@ func _capture(name: String, trigger: Callable,
 		sheet.blit_rect(shots[i], Rect2i(Vector2i.ZERO, cell),
 			Vector2i(col * cell.x, row * cell.y))
 	sheet.save_png("/tmp/juice-sheet-%s.png" % name)
-	print("  wrote /tmp/juice-sheet-%s.png (%d frames, %dx%d grid, stride %d)" %
-		[name, shots.size(), columns, rows, stride])
+	print("  wrote /tmp/juice-sheet-%s.png (%d frames, %dx%d grid, stride %d = %.2fs apart)" %
+		[name, shots.size(), columns, rows, stride, interval])

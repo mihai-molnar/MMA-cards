@@ -31,10 +31,16 @@ const STRETCH_SCALE: Vector2 = Vector2(0.88, 1.16)
 # --- Anticipation and lunge ---------------------------------------------
 ## A short backswing away from the target before striking, so a punch has a
 ## windup instead of starting from rest.
-const ANTICIPATE_DIST: float = 14.0
-const ANTICIPATE_TIME: float = 0.07
-const LUNGE_TIME: float = 0.24
-const LUNGE_SCALE: float = 1.18
+const ANTICIPATE_DIST: float = 20.0
+const ANTICIPATE_TIME: float = 0.12
+const LUNGE_TIME: float = 0.45
+const LUNGE_SCALE: float = 1.25
+## Fraction of LUNGE_TIME the card stays fully opaque before it starts
+## fading. Fading in parallel across the *whole* travel (the old behaviour)
+## made the card half-transparent by the halfway point of its throw, which
+## read as a flicker rather than a punch landing -- holding it solid for
+## most of the trip keeps it legible right up until it strikes.
+const LUNGE_FADE_RATIO: float = 0.6
 
 # --- Hit stop ------------------------------------------------------------
 ## Near-freezing the world for a moment is the cheapest way to make an impact
@@ -73,6 +79,15 @@ const TILT_LERP_SPEED: float = 12.0
 # --- Staggered deal ------------------------------------------------------
 const DEAL_STAGGER: float = 0.055
 const DEAL_FROM_BELOW: float = 220.0
+
+# --- Re-fan on hand rebuild -----------------------------------------------
+## When a played card leaves, the surviving cards slide from their old slots
+## to their new, closed-up ones rather than snapping there (see
+## CardView.slide_from and HandView.rebuild). REFAN_STAGGER stays small --
+## unlike DEAL_STAGGER's full new-hand entrance, this is a small in-place
+## resettle and a heavy stagger would read as sluggish rather than organic.
+const REFAN_TIME: float = 0.36
+const REFAN_STAGGER: float = 0.02
 
 # --- Damage numbers ------------------------------------------------------
 const NUMBER_TIME: float = 0.75

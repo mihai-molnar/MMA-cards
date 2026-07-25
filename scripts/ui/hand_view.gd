@@ -70,7 +70,18 @@ func set_lunge_anchors(attack_anchor: Vector2, defend_anchor: Vector2) -> void:
 ## the whole hand and dealt every remaining card in again, dropping it off the
 ## bottom of the screen and flying it back for a card that never left.
 func rebuild(battle: BattleState, deal: bool = false) -> void:
+	# Recorded before freeing, keyed by CardData identity -- CardLibrary.
+	# load_card() duplicates a fresh instance per deck entry, so every card in
+	# hand is a distinct object and this holds even for two copies of the same
+	# card id. The played card itself is never a HandView child by this point
+	# (_hand_off reparents it out the moment it is clicked, well before
+	# battle.play_card() triggers this rebuild), so it is never captured here
+	# and never a candidate to re-fan.
+	var previous_positions: Dictionary = {}
 	for child: Node in get_children():
+		var view: CardView = child as CardView
+		if view != null and view.card != null:
+			previous_positions[view.card] = view.target_position
 		remove_child(child)
 		child.queue_free()
 
@@ -85,6 +96,25 @@ func rebuild(battle: BattleState, deal: bool = false) -> void:
 	refresh_states(battle)
 	if deal:
 		deal_in()
+	else:
+		_refan_survivors(previous_positions)
+
+## Slides every surviving card from its pre-rebuild position to its freshly
+## laid-out rest slot, staggered slightly so the fan resettles organically
+## rather than as one rigid block. A card whose CardData is not in
+## `previous_positions` is genuinely new this rebuild (just drawn) and keeps
+## ordinary rest placement -- slide_from() is simply never called for it.
+func _refan_survivors(previous_positions: Dictionary) -> void:
+	var stagger_index: int = 0
+	for child: Node in get_children():
+		var view: CardView = child as CardView
+		if view == null or view.card == null:
+			continue
+		if not previous_positions.has(view.card):
+			continue
+		var start: Vector2 = previous_positions[view.card]
+		view.slide_from(start, stagger_index * Juice.REFAN_STAGGER)
+		stagger_index += 1
 
 ## Fans the children along an arc. Derived purely from index and count, so
 ## calling it repeatedly is idempotent.

@@ -353,7 +353,18 @@ func lunge_to(anchor: Vector2) -> void:
 	tween.parallel().tween_property(self, "target_scale",
 		Juice.STRETCH_SCALE * Juice.LUNGE_SCALE, Juice.LUNGE_TIME)
 	tween.parallel().tween_property(self, "target_rotation", 0.0, Juice.LUNGE_TIME)
-	tween.parallel().tween_property(self, "modulate:a", 0.0, Juice.LUNGE_TIME)
+	# Stay fully opaque for LUNGE_FADE_RATIO of the strike, then fade over what
+	# remains, in parallel with the position tween above. A plain
+	# tween_interval() followed by a plain tween_property() does NOT achieve
+	# this: a non-parallel tweener starts after the *whole* previous parallel
+	# group finishes (here, LUNGE_TIME -- the longest tweener in the group),
+	# not after just the interval, so the fade would never visibly start
+	# early (confirmed empirically before landing on this). set_delay() on
+	# the parallel-joined PropertyTweener itself is the correct primitive:
+	# it delays that one tweener's own start within the group.
+	var fade_time: float = Juice.LUNGE_TIME * (1.0 - Juice.LUNGE_FADE_RATIO)
+	var fade_delay: float = Juice.LUNGE_TIME - fade_time
+	tween.parallel().tween_property(self, "modulate:a", 0.0, fade_time).set_delay(fade_delay)
 	tween.chain().tween_callback(queue_free)
 	_tween = tween
 
@@ -374,6 +385,33 @@ func spring_to(p_position: Vector2, delay: float = 0.0) -> void:
 	_tween = Juice.spring(create_tween())
 	_tween.tween_interval(delay)
 	_tween.tween_property(self, "target_position", p_position, Juice.SPRING_TIME)
+
+## Places the card at `start` and springs it to its resting slot. Used when the
+## hand re-fans after a card leaves: the rebuild destroys and recreates every
+## node, so without carrying the old position across, survivors simply appear
+## at their new slots and the re-fan reads as a snap.
+##
+## Takes only a start -- the destination is always rest_position, which
+## set_rest_transform() (via HandView.layout_cards(), always called before
+## this) has already written. Owns the tween in the shared _tween slot,
+## killing any existing one, exactly as spring_to() does -- a tween created
+## outside CardView is invisible to _animate_to's kill, which is precisely
+## the bug that once left hover silently dead.
+func slide_from(start: Vector2, delay: float = 0.0) -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	if not is_inside_tree():
+		# No _process off-tree, so snap immediately to the rest position
+		# layout_cards() already assigned -- same as spring_to's and
+		# _animate_to's out-of-tree branch.
+		target_position = rest_position
+		position = rest_position
+		return
+	target_position = start
+	position = start
+	_tween = Juice.spring(create_tween())
+	_tween.tween_interval(delay)
+	_tween.tween_property(self, "target_position", rest_position, Juice.REFAN_TIME)
 
 func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
 	if _tween != null and _tween.is_valid():
