@@ -118,7 +118,8 @@ and giving enemies real cards later is a swap rather than a rewrite.
 ### Turn Structure
 
 ```
-PLAYER TURN START   expire player guard → draw 5 → AP = 3 → clear combo history
+PLAYER TURN START   turn_number += 1 → expire player guard → draw 5 → AP = 3
+                    → clear combo history
 PLAYER ACTS         play cards while AP allows; End Turn button always available
 PLAYER TURN END     discard hand → decrement player status timers
 ENEMY TURN START    expire enemy guard
@@ -132,6 +133,16 @@ opponent's turn while a 2-turn strength buff still covers exactly one attack.
 
 Player moves first. Battle ends the moment either fighter reaches 0 HP, checked after
 every damage application.
+
+### Turn Counter
+
+`BattleState.turn_number` is authoritative and lives in the rules layer, not the view, so
+future content can read it (escalating enemies, "on turn 5" triggers, run statistics).
+
+A turn is a **full round** — the player phase plus the enemy phase that follows it. The
+counter starts at 0 and increments at the start of each player turn, so the player's first
+turn is turn 1. It advances once per round, not once per phase. `turn_started(turn_number)`
+is emitted so the view can display it, and Restart resets it to 0.
 
 ### Deck Flow
 
@@ -214,8 +225,9 @@ CardView.pressed
       → ComboRule inspects this turn's play history, computes bonus
       → each CardEffect.apply(context, source, target)
           → DamageEffect calls Combat.resolve_damage(...)
-      → BattleState emits signals (hp_changed, guard_changed, ap_changed,
-                                   card_played, combo_triggered, battle_over)
+      → BattleState emits signals (turn_started, hp_changed, guard_changed,
+                                   ap_changed, card_played, combo_triggered,
+                                   status_changed, battle_over)
   → BattleView updates labels, bars, card states
 ```
 
@@ -227,7 +239,7 @@ Root `Level` (Node2D, existing scene and UID preserved) with a full-rect `Contro
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                              INTENT: ⚔ 8             │
+│  TURN 1                      INTENT: ⚔ 8             │
 │              ┌──────────┐                            │
 │              │   RED    │   ENEMY  48/48             │
 │              │  ENEMY   │   [ 🛡 8 ]  [ ↑2 STR ]      │
@@ -297,9 +309,15 @@ It exits non-zero on any failed assertion. Cases:
 16. Card count is conserved at 12 across draw + hand + discard.
 17. Drawing with an insufficient draw pile reshuffles the discard and completes the draw.
 
+**Turn counter**
+18. Starts at 0; the player's first turn is turn 1.
+19. Advances once per full round, not once per phase — after three player turns the
+    counter reads 3, not 6.
+20. Restart resets it to 0.
+
 **Outcomes**
-18. Enemy at 0 HP emits battle_over with a win; HP floors at 0, never negative.
-19. Player at 0 HP emits battle_over with a loss.
+21. Enemy at 0 HP emits battle_over with a win; HP floors at 0, never negative.
+22. Player at 0 HP emits battle_over with a loss.
 
 After the headless suite passes, the game is launched normally to confirm it renders,
 responds to clicks, and plays through a full battle.
