@@ -24,11 +24,11 @@ func _build_ui() -> void:
 	layer.add_child(hud)
 
 	hand_view = HandView.new()
-	hand_view.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	hand_view.offset_top = -200
-	hand_view.offset_bottom = -20
 	hand_view.card_chosen.connect(_on_card_chosen)
 	hud.add_child(hand_view)
+
+	# Attacks fly at the enemy, Block pulls back to the player.
+	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
 
 	hud.bring_result_panel_to_front()
 
@@ -42,6 +42,10 @@ func _connect_battle() -> void:
 	battle.battle_over.connect(_on_battle_over)
 
 func _on_turn_started(turn_number: int) -> void:
+	# Player turn start clears the player's guard by expiry (BattleState
+	# expires it here, before this signal). turn_started fires before
+	# fighters_changed, so this lands in time to suppress that panel's pulse.
+	hud.suppress_player_guard_pulse()
 	hud.update_turn(turn_number)
 	hud.append_log("-- Turn %d --" % turn_number)
 
@@ -57,16 +61,29 @@ func _on_fighters_changed() -> void:
 	hand_view.refresh_states(battle)
 
 func _on_card_chosen(index: int) -> void:
-	battle.play_card(index)
+	# The card only departs the hand once BattleState confirms the play; a
+	# rejected play must leave HandView untouched (see HandView.launch_play).
+	if battle.play_card(index):
+		hand_view.launch_play(index)
 
 func _on_end_turn_pressed() -> void:
+	# Enemy turn start clears the enemy's guard by expiry, inside end_turn().
+	# Suppress before calling it so that expiry doesn't read as an absorb.
+	hud.suppress_enemy_guard_pulse()
 	battle.end_turn()
 
 func _on_battle_over(player_won: bool) -> void:
+	# Drop any lifted card before the banner appears, so nothing is left raised
+	# behind it.
+	hand_view.clear_hover()
 	hud.show_result(player_won)
 	hand_view.refresh_states(battle)
 
 func _on_restart_pressed() -> void:
 	hud.hide_result()
 	hud.clear_log()
+	# A player who wins at full HP while still holding guard would otherwise
+	# get a spurious pulse when restart() zeroes it out.
+	hud.suppress_player_guard_pulse()
+	hud.suppress_enemy_guard_pulse()
 	battle.restart()

@@ -12,8 +12,42 @@ const DEFENSE_COLOR: Color = Color(0.16, 0.20, 0.32)
 const COMBO_BORDER_COLOR: Color = Color(1.0, 0.80, 0.20)
 const UNAFFORDABLE_ALPHA: float = 0.45
 
+## Overlapping same-coloured cards otherwise fuse into one shape; this border
+## reads as the gap between fanned cards because it matches the page background.
+const BORDER_WIDTH: float = 3.0
+const BORDER_COLOR: Color = Color(0.05, 0.05, 0.07)
+
+const HOVER_LIFT: float = 28.0
+const HOVER_SCALE: float = 1.08
+const HOVER_TIME: float = 0.12
+const HOVER_Z: int = 50
+const LUNGE_Z: int = 60
+const LUNGE_TIME: float = 0.28
+const LUNGE_SCALE: float = 1.15
+
 var card: CardData
 
+## Where this card sits when not hovered. HandView sets these when it fans.
+var rest_position: Vector2 = Vector2.ZERO
+var rest_rotation: float = 0.0
+var rest_z_index: int = 0
+
+## Where the current animation is heading. Tweens need real frames, which
+## headless tests do not have, so tests assert these rather than the live
+## transform. Always recomputed from rest_*, so hovering cannot drift.
+var target_position: Vector2 = Vector2.ZERO
+var target_rotation: float = 0.0
+var target_scale: Vector2 = Vector2.ONE
+
+## The anchor most recently passed to lunge_to(). Test hook, set before the
+## is_inside_tree() guard so it is observable even though tests instantiate
+## cards detached and never see the tween itself run.
+var debug_last_lunge_anchor: Vector2 = Vector2.ZERO
+
+var _hovered: bool = false
+var _tween: Tween
+
+var _border: ColorRect
 var _background: ColorRect
 var _name_label: Label
 var _cost_label: Label
@@ -26,13 +60,28 @@ static func create(p_card: CardData) -> CardView:
 
 func _init() -> void:
 	custom_minimum_size = CARD_SIZE
+	size = CARD_SIZE
+	# Bottom-centre, so rotation reads as a held fan rather than a pinwheel.
+	pivot_offset = Vector2(CARD_SIZE.x / 2.0, CARD_SIZE.y)
 	flat = true
 	clip_contents = true
 	_build()
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
 
 func _build() -> void:
+	_border = ColorRect.new()
+	_border.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_border.color = BORDER_COLOR
+	_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_border)
+
 	_background = ColorRect.new()
 	_background.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_background.offset_left = BORDER_WIDTH
+	_background.offset_top = BORDER_WIDTH
+	_background.offset_right = -BORDER_WIDTH
+	_background.offset_bottom = -BORDER_WIDTH
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background)
 
@@ -117,3 +166,92 @@ func debug_text() -> String:
 
 func _on_pressed() -> void:
 	card_selected.emit(self)
+
+## Called by HandView when it fans the hand. Snaps immediately unless the card
+## is mid-hover, so a rebuild never yanks a lifted card out from under the cursor.
+func set_rest_transform(p_position: Vector2, p_rotation: float, p_z_index: int) -> void:
+	rest_position = p_position
+	rest_rotation = p_rotation
+	rest_z_index = p_z_index
+	if _hovered:
+		return
+	target_position = p_position
+	target_rotation = p_rotation
+	target_scale = Vector2.ONE
+	position = p_position
+	rotation = p_rotation
+	scale = Vector2.ONE
+	z_index = p_z_index
+
+## Named is_card_hovered() rather than is_hovered(): BaseButton (our ancestor)
+## already defines a native is_hovered() backed by the engine's own mouse
+## tracking. GDScript cannot actually override it — calls resolve to the native
+## getter regardless of a script method of the same name, so a same-named
+## override silently returns the wrong value (confirmed: it kept reading false
+## after apply_hover(true) in headless tests, which never generate real mouse
+## input). This is a script-level notion of "hover" driven entirely by
+## apply_hover(), which is why it needs its own name.
+func is_card_hovered() -> bool:
+	return _hovered
+
+## Exposed separately from the mouse signals so tests can drive hover without
+## synthesising input events.
+func apply_hover(value: bool) -> void:
+	if _hovered == value:
+		return
+	_hovered = value
+	if value:
+		z_index = HOVER_Z
+		_animate_to(rest_position - Vector2(0.0, HOVER_LIFT), 0.0, Vector2.ONE * HOVER_SCALE)
+	else:
+		z_index = rest_z_index
+		_animate_to(rest_position, rest_rotation, Vector2.ONE)
+
+## The played-card animation. The card must already have been reparented out of
+## HandView, or the imminent rebuild will free it mid-tween.
+func lunge_to(anchor: Vector2) -> void:
+	debug_last_lunge_anchor = anchor
+	# A hover tween (started by apply_hover, e.g. from clicking a hovered
+	# card) is very likely still live at this point. Without killing it here,
+	# remove_child/add_child during the reparent that precedes this call
+	# pauses then resumes it, and it would keep driving position/rotation/
+	# scale alongside the lunge tween below.
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	z_index = LUNGE_Z
+	disabled = true
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if not is_inside_tree():
+		queue_free()
+		return
+	var tween := create_tween()
+	tween.tween_property(self, "position", anchor - CARD_SIZE / 2.0, LUNGE_TIME)
+	tween.parallel().tween_property(self, "scale", Vector2.ONE * LUNGE_SCALE, LUNGE_TIME)
+	tween.parallel().tween_property(self, "rotation", 0.0, LUNGE_TIME)
+	tween.parallel().tween_property(self, "modulate:a", 0.0, LUNGE_TIME)
+	tween.chain().tween_callback(queue_free)
+
+func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
+	target_position = p_position
+	target_rotation = p_rotation
+	target_scale = p_scale
+	# Kill any live tween before either branch below: the out-of-tree path
+	# used to skip this, so a tween started while the card was in the tree
+	# (e.g. a hover) could keep running and later fight a fresh one.
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	if not is_inside_tree():
+		position = p_position
+		rotation = p_rotation
+		scale = p_scale
+		return
+	_tween = create_tween()
+	_tween.tween_property(self, "position", p_position, HOVER_TIME)
+	_tween.parallel().tween_property(self, "rotation", p_rotation, HOVER_TIME)
+	_tween.parallel().tween_property(self, "scale", p_scale, HOVER_TIME)
+
+func _on_mouse_entered() -> void:
+	apply_hover(true)
+
+func _on_mouse_exited() -> void:
+	apply_hover(false)
