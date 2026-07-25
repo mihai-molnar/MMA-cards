@@ -30,6 +30,8 @@ func _build_ui() -> void:
 	hand_view.card_chosen.connect(_on_card_chosen)
 	hud.add_child(hand_view)
 
+	hud.bring_result_panel_to_front()
+
 func _connect_battle() -> void:
 	battle.turn_started.connect(_on_turn_started)
 	battle.ap_changed.connect(_on_ap_changed)
@@ -62,6 +64,7 @@ func _on_end_turn_pressed() -> void:
 
 func _on_battle_over(player_won: bool) -> void:
 	hud.show_result(player_won)
+	hand_view.refresh_states(battle)
 
 func _on_restart_pressed() -> void:
 	hud.hide_result()

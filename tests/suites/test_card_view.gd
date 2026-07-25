@@ -6,6 +6,7 @@ func run(t: TestRunner) -> void:
 	_test_card_view_text(t)
 	_test_affordability(t)
 	_test_hand_view_rebuild(t)
+	_test_combo_armed_idempotent(t)
 
 func _test_card_view_text(t: TestRunner) -> void:
 	var card: CardData = CardLibrary.load_card(&"jab")
@@ -61,3 +62,15 @@ func _test_hand_view_rebuild(t: TestRunner) -> void:
 	t.check(second.disabled, "the 2 AP straight is disabled at 1 AP")
 
 	hand.free()
+
+func _test_combo_armed_idempotent(t: TestRunner) -> void:
+	var card: CardData = CardLibrary.load_card(&"jab")
+	var view: CardView = CardView.create(card)
+
+	view.set_combo_armed(true)
+	var once: Color = view._background.color
+
+	view.set_combo_armed(true)
+	view.set_combo_armed(true)
+	t.check_eq(view._background.color, once, "calling set_combo_armed(true) three times matches calling it once")
+	view.free()

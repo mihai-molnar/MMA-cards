@@ -94,14 +94,22 @@ func set_affordable(value: bool) -> void:
 	disabled = not value
 	modulate.a = 1.0 if value else UNAFFORDABLE_ALPHA
 
+## Base (non-armed) background color for the current card.
+func _base_color() -> Color:
+	if card == null:
+		return ATTACK_COLOR
+	return DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
+
+## Idempotent: always computed from the base color, so calling this N times
+## with the same value equals calling it once. refresh_states() calls this
+## once per model event, so drifting from repeated lerps would compound.
 func set_combo_armed(value: bool) -> void:
 	if value:
 		add_theme_constant_override("outline_size", 3)
-		_background.color = _background.color.lerp(COMBO_BORDER_COLOR, 0.25)
+		_background.color = _base_color().lerp(COMBO_BORDER_COLOR, 0.25)
 	else:
 		remove_theme_constant_override("outline_size")
-		if card != null:
-			_background.color = DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
+		_background.color = _base_color()
 
 ## Everything the card displays, for tests.
 func debug_text() -> String:

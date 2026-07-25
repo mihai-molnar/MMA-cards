@@ -44,10 +44,10 @@ func build_effects() -> Array[CardEffect]:
 	return effects
 
 ## ASCII only — the default font has no glyphs for sword/shield symbols.
-func intent_text(enemy: Fighter) -> String:
+func intent_text(enemy: Fighter, target: Fighter) -> String:
 	match current_action:
 		Action.ATTACK:
-			return "ATTACK %d" % Combat.preview_damage(BattleConfig.ENEMY_ATTACK_DAMAGE, enemy)
+			return "ATTACK %d" % Combat.preview_damage(BattleConfig.ENEMY_ATTACK_DAMAGE, enemy, target)
 		Action.BLOCK:
 			return "BLOCK %d" % BattleConfig.ENEMY_GUARD_AMOUNT
 		Action.BUFF:

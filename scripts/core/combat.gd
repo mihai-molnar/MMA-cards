@@ -25,7 +25,13 @@ static func resolve_damage(base: int, source: Fighter, target: Fighter) -> Damag
 	var hp_loss: int = target.apply_hp_loss(amount - absorbed)
 	return DamageResult.new(amount, absorbed, hp_loss)
 
-## What `base` would hit for, given only the source's modifiers. Used by the
-## enemy intent telegraph — it must not mutate anything.
-static func preview_damage(base: int, source: Fighter) -> int:
-	return maxi(StatusRegistry.modify_outgoing(source.statuses, base), 0)
+## What `base` would hit for, applying the same modifier pipeline as
+## resolve_damage (outgoing then incoming, then the clamp) without the guard
+## or hp steps. Used by the enemy intent telegraph — it must not mutate
+## anything, and it must never diverge from what resolve_damage would
+## actually produce, or the telegraph lies.
+static func preview_damage(base: int, source: Fighter, target: Fighter) -> int:
+	var amount: int = base
+	amount = StatusRegistry.modify_outgoing(source.statuses, amount)
+	amount = StatusRegistry.modify_incoming(target.statuses, amount)
+	return maxi(amount, 0)

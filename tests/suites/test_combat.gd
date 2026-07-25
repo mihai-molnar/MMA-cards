@@ -76,6 +76,9 @@ func _test_clamping(t: TestRunner) -> void:
 
 func _test_preview(t: TestRunner) -> void:
 	var enemy := Fighter.new("Enemy", 48)
-	t.check_eq(Combat.preview_damage(8, enemy), 8, "preview of an unbuffed attack is 8")
+	var player := Fighter.new("Player", 50)
+	t.check_eq(Combat.preview_damage(8, enemy, player), 8, "preview of an unbuffed attack is 8")
 	enemy.statuses.apply(StrengthStatus.ID, 2, 2)
-	t.check_eq(Combat.preview_damage(8, enemy), 12, "preview reflects strength for the intent display")
+	t.check_eq(Combat.preview_damage(8, enemy, player), 12, "preview reflects strength for the intent display")
+	t.check_eq(player.hp, 50, "preview_damage never mutates the target")
+	t.check_eq(enemy.hp, 48, "preview_damage never mutates the source")

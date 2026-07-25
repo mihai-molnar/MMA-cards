@@ -89,7 +89,17 @@ since `StatusRegistry` calls both unconditionally. Then add one line to
 Rules match on card tags, so no card code changes.
 
 **Change balance:** everything tunable is in `scripts/core/battle_config.gd`.
-No magic numbers anywhere else.
+No magic numbers anywhere else. But the constants are not uniformly live:
+- `JAB_COST`, `JAB_DAMAGE`, `STRAIGHT_COST`, `STRAIGHT_DAMAGE`, `BLOCK_COST`,
+  `BLOCK_GUARD` are baked into `resources/cards/*.tres` by
+  `tools/generate_cards.gd` at generation time. Editing one of these does
+  **nothing** to the running game until you re-run the generator (see
+  Commands above). `tests/suites/test_card_library.gd` asserts the loaded
+  `.tres` values against these constants, so a forgotten regen now fails the
+  suite instead of silently doing nothing.
+- Every other constant (enemy behavior, combo ratio, strength scaling, AP,
+  hand size, HP) is read directly at battle time and takes effect
+  immediately — no regen step needed.
 
 ## Timing rules that are easy to get wrong
 

@@ -113,7 +113,7 @@ func _begin_player_turn() -> void:
 	ap_changed.emit(ap, BattleConfig.AP_PER_TURN)
 	hand_changed.emit()
 	fighters_changed.emit()
-	intent_changed.emit(brain.intent_text(enemy))
+	intent_changed.emit(brain.intent_text(enemy, player))
 
 func _run_enemy_turn() -> void:
 	enemy.expire_guard()
@@ -123,11 +123,13 @@ func _run_enemy_turn() -> void:
 		effect.apply(enemy, player, context)
 	_emit_log(context)
 
+	fighters_changed.emit()
+	if _check_battle_over():
+		return
+
 	enemy.tick_statuses_turn_end()
 	brain.advance()
-	intent_changed.emit(brain.intent_text(enemy))
-	fighters_changed.emit()
-	_check_battle_over()
+	intent_changed.emit(brain.intent_text(enemy, player))
 
 ## Ends the battle if either fighter is down. Returns true if it ended.
 func _check_battle_over() -> bool:

@@ -3,4 +3,4 @@
 /android/
 
 # Agent worktrees (scratch)
-.claude/
+.claude/worktrees/

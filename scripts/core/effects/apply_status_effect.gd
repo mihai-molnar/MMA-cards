@@ -15,4 +15,5 @@ func apply(source: Fighter, target: Fighter, context: Dictionary) -> void:
 	])
 
 func describe() -> String:
-	return "Gain %d %s." % [stacks, StatusRegistry.display_name(status_id)]
+	var verb: String = "Gain" if target_self else "Apply"
+	return "%s %d %s." % [verb, stacks, StatusRegistry.display_name(status_id)]

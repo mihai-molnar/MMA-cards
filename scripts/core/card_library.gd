@@ -16,9 +16,6 @@ static func load_card(card_id: StringName) -> CardData:
 	# Duplicate so every deck entry is an independent instance.
 	return (resource as CardData).duplicate(true)
 
-static func all_ids() -> Array:
-	return BattleConfig.DECK_COMPOSITION.keys()
-
 static func build_starting_deck() -> Array[CardData]:
 	var deck: Array[CardData] = []
 	for card_id: StringName in BattleConfig.DECK_COMPOSITION:

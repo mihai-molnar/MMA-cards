@@ -155,3 +155,9 @@ func show_result(player_won: bool) -> void:
 
 func hide_result() -> void:
 	_result_panel.visible = false
+
+## Called once BattleView has finished parenting its own children (e.g.
+## hand_view) under this HUD, so the result panel still draws — and picks up
+## input — above everything else.
+func bring_result_panel_to_front() -> void:
+	_result_panel.move_to_front()

@@ -5,9 +5,11 @@ const TestRunner := preload("res://tests/run_tests.gd")
 func run(t: TestRunner) -> void:
 	_test_combo_integration(t)
 	_test_combo_broken(t)
+	_test_combo_history_clears_across_turns(t)
 	_test_buff_timing_across_turns(t)
 	_test_win(t)
 	_test_loss(t)
+	_test_no_intent_after_fatal_enemy_attack(t)
 
 func _new_battle() -> BattleState:
 	var battle := BattleState.new(12345)
@@ -51,6 +53,21 @@ func _test_combo_broken(t: TestRunner) -> void:
 	battle2.play_card(0)
 	t.check_eq(battle2.enemy.hp, 48 - 6 - 9, "the broken-combo straight deals a plain 9")
 
+## A jab played on one turn must not be able to arm a straight's combo bonus
+## on a later turn — only battle_state.gd's _play_history.clear() in
+## _begin_player_turn() prevents that.
+func _test_combo_history_clears_across_turns(t: TestRunner) -> void:
+	var battle: BattleState = _new_battle()
+	_stack_hand(battle, [&"jab"])
+	battle.play_card(0)   # jab played on turn 1
+
+	battle.end_turn()   # advance to turn 2; history should clear
+	_stack_hand(battle, [&"straight"])
+	t.check_eq(battle.combo_bonus_for(0), 0, "a jab from last turn cannot arm this turn's straight")
+
+	battle.play_card(0)
+	t.check_eq(battle.enemy.hp, 48 - 6 - 9, "the cross-turn straight deals its plain 9, no combo bonus")
+
 func _test_buff_timing_across_turns(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
 	# Enemy cycle: turn 1 attack, turn 2 block, turn 3 buff, turn 4 attack.
@@ -62,7 +79,7 @@ func _test_buff_timing_across_turns(t: TestRunner) -> void:
 
 	battle.end_turn()   # enemy buffs
 	t.check_eq(battle.enemy.statuses.get_stacks(StrengthStatus.ID), 2, "the enemy holds 2 strength after buffing")
-	t.check_eq(battle.brain.intent_text(battle.enemy), "ATTACK 12", "the telegraph warns of a 12 damage attack")
+	t.check_eq(battle.brain.intent_text(battle.enemy, battle.player), "ATTACK 12", "the telegraph warns of a 12 damage attack")
 
 	battle.end_turn()   # enemy attacks, buffed
 	t.check_eq(battle.player.hp, 30, "the buffed attack deals 12")
@@ -101,3 +118,23 @@ func _test_loss(t: TestRunner) -> void:
 	t.check(battle.is_over, "the battle is marked over on a loss")
 	t.check_eq(won.size(), 1, "battle_over fires exactly once on a loss")
 	t.check_eq(won[0], false, "the player is reported as the loser")
+
+func _test_no_intent_after_fatal_enemy_attack(t: TestRunner) -> void:
+	var battle: BattleState = _new_battle()
+	# Arrays, not plain bools: lambda captures of outer locals in GDScript are
+	# by value, so a mutable container is needed for the closures below to
+	# actually record what happened.
+	var battle_over_fired: Array = []
+	var intents_after_over: Array = []
+	battle.battle_over.connect(func(_player_won: bool) -> void: battle_over_fired.append(true))
+	battle.intent_changed.connect(func(text: String) -> void:
+		if not battle_over_fired.is_empty():
+			intents_after_over.append(text)
+	)
+
+	battle.player.hp = 5
+	battle.end_turn()   # enemy attacks for 8, a fatal blow
+
+	t.check(battle.is_over, "the battle ends on the fatal enemy attack")
+	t.check_eq(battle_over_fired.size(), 1, "battle_over fires once on the fatal attack")
+	t.check_eq(intents_after_over.size(), 0, "no intent_changed fires after battle_over on a fatal enemy attack")

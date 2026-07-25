@@ -58,6 +58,14 @@ func _test_apply_status_effect(t: TestRunner) -> void:
 	effect.apply(enemy, player, _new_context(0))
 	t.check_eq(enemy.statuses.get_stacks(StrengthStatus.ID), 2, "self-targeted status lands on the source")
 	t.check_eq(player.statuses.get_stacks(StrengthStatus.ID), 0, "self-targeted status spares the target")
+	t.check_eq(effect.describe(), "Gain 2 STR.", "a self-targeted status describes itself as a gain")
+
+	var opponent_effect := ApplyStatusEffect.new()
+	opponent_effect.status_id = StrengthStatus.ID
+	opponent_effect.stacks = 2
+	opponent_effect.turns = 2
+	opponent_effect.target_self = false
+	t.check_eq(opponent_effect.describe(), "Apply 2 STR.", "a target-directed status describes itself as an apply")
 
 func _test_card_data(t: TestRunner) -> void:
 	var card := CardData.new()

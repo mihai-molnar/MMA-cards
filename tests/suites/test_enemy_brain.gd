@@ -49,16 +49,17 @@ func _test_effects(t: TestRunner) -> void:
 
 func _test_intent_text(t: TestRunner) -> void:
 	var enemy := Fighter.new("Enemy", 48)
+	var player := Fighter.new("Player", 50)
 	var brain := EnemyBrain.new()
-	t.check_eq(brain.intent_text(enemy), "ATTACK 8", "unbuffed attack telegraphs 8")
+	t.check_eq(brain.intent_text(enemy, player), "ATTACK 8", "unbuffed attack telegraphs 8")
 
 	enemy.statuses.apply(StrengthStatus.ID, 2, 2)
-	t.check_eq(brain.intent_text(enemy), "ATTACK 12", "a buffed attack telegraphs its real damage")
+	t.check_eq(brain.intent_text(enemy, player), "ATTACK 12", "a buffed attack telegraphs its real damage")
 
 	brain.advance()
-	t.check_eq(brain.intent_text(enemy), "BLOCK 8", "block intent shows the guard amount")
+	t.check_eq(brain.intent_text(enemy, player), "BLOCK 8", "block intent shows the guard amount")
 	brain.advance()
-	t.check_eq(brain.intent_text(enemy), "BUFF +2 STR", "buff intent shows the strength gain")
+	t.check_eq(brain.intent_text(enemy, player), "BUFF +2 STR", "buff intent shows the strength gain")
 
 func _test_reset(t: TestRunner) -> void:
 	var brain := EnemyBrain.new()

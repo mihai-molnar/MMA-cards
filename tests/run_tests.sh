@@ -20,8 +20,16 @@ cd "$(dirname "$0")/.." || exit 1
 # Mandatory: Godot resolves class_name globals through
 # .godot/global_script_class_cache.cfg, which only the editor or an
 # explicit --import writes, and .godot/ is gitignored. Output discarded —
-# only the actual test run's output matters.
-"$GODOT_BIN" --headless --path . --import >/dev/null 2>&1
+# only the actual test run's output matters. Its own exit status is not,
+# though: a failed import surfaces downstream as a confusing "Identifier
+# not declared" test failure, which is a missing import, not a code bug.
+import_output=$("$GODOT_BIN" --headless --path . --import 2>&1)
+import_exit_code=$?
+if [ "$import_exit_code" -ne 0 ]; then
+	echo "$import_output"
+	echo "run_tests.sh: FAIL (--import exited with code $import_exit_code — this is an import failure, not a test failure)"
+	exit 1
+fi
 
 output=$("$GODOT_BIN" --headless --path . --script res://tests/run_tests.gd 2>&1)
 exit_code=$?

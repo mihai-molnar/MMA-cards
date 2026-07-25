@@ -7,22 +7,25 @@ func run(t: TestRunner) -> void:
 	_test_starting_deck(t)
 
 func _test_cards_load(t: TestRunner) -> void:
+	# Compared against BattleConfig, not literals: the .tres files are baked
+	# by tools/generate_cards.gd and do not update themselves when a constant
+	# changes, so this is the guard that catches that drift.
 	var jab: CardData = CardLibrary.load_card(&"jab")
 	t.check(jab != null, "jab.tres loads")
-	t.check_eq(jab.cost, 1, "jab costs 1 AP")
-	t.check_eq(jab.total_base_damage(), 6, "jab deals 6 damage")
+	t.check_eq(jab.cost, BattleConfig.JAB_COST, "jab costs BattleConfig.JAB_COST AP")
+	t.check_eq(jab.total_base_damage(), BattleConfig.JAB_DAMAGE, "jab deals BattleConfig.JAB_DAMAGE damage")
 	t.check(jab.has_tag(&"jab"), "jab carries the jab tag")
 
 	var straight: CardData = CardLibrary.load_card(&"straight")
-	t.check_eq(straight.cost, 2, "straight costs 2 AP")
-	t.check_eq(straight.total_base_damage(), 9, "straight deals 9 damage")
+	t.check_eq(straight.cost, BattleConfig.STRAIGHT_COST, "straight costs BattleConfig.STRAIGHT_COST AP")
+	t.check_eq(straight.total_base_damage(), BattleConfig.STRAIGHT_DAMAGE, "straight deals BattleConfig.STRAIGHT_DAMAGE damage")
 	t.check(straight.has_tag(&"straight"), "straight carries the straight tag")
 
 	var blocker: CardData = CardLibrary.load_card(&"block")
-	t.check_eq(blocker.cost, 1, "block costs 1 AP")
+	t.check_eq(blocker.cost, BattleConfig.BLOCK_COST, "block costs BattleConfig.BLOCK_COST AP")
 	t.check_eq(blocker.total_base_damage(), 0, "block deals no damage")
 	t.check_eq(blocker.effects.size(), 1, "block has one effect")
-	t.check_eq((blocker.effects[0] as GuardEffect).amount, 5, "block grants 5 guard")
+	t.check_eq((blocker.effects[0] as GuardEffect).amount, BattleConfig.BLOCK_GUARD, "block grants BattleConfig.BLOCK_GUARD guard")
 
 func _test_starting_deck(t: TestRunner) -> void:
 	var deck: Array[CardData] = CardLibrary.build_starting_deck()

@@ -8,6 +8,7 @@ func run(t: TestRunner) -> void:
 	_test_ap(t)
 	_test_player_guard_timing(t)
 	_test_enemy_guard_timing(t)
+	_test_restart_resets_full_state(t)
 
 func _new_battle() -> BattleState:
 	var battle := BattleState.new(12345)
@@ -83,3 +84,42 @@ func _test_enemy_guard_timing(t: TestRunner) -> void:
 
 	battle.end_turn()
 	t.check_eq(battle.enemy.guard, 0, "enemy guard clears at the start of its next turn")
+
+## restart() touches two Fighters, the Deck, the EnemyBrain, and is_over —
+## _test_turn_counter above only ever checked turn_number. Drive every one
+## of those away from its start value, then confirm restart() puts all of
+## them back.
+func _test_restart_resets_full_state(t: TestRunner) -> void:
+	var battle: BattleState = _new_battle()
+	battle.end_turn()   # enemy attacks; brain now intends BLOCK
+	battle.end_turn()   # enemy blocks; brain now intends BUFF
+
+	t.check(battle.turn_number > 1, "several turns passed before restart")
+	t.check_eq(battle.brain.current_action, EnemyBrain.Action.BUFF, "the enemy brain advanced past ATTACK before restart")
+
+	# Push both fighters into a damaged, guarded, buffed state right before
+	# restarting, so restart() is what has to undo it, not natural expiry.
+	battle.player.apply_hp_loss(20)
+	battle.enemy.apply_hp_loss(20)
+	battle.player.add_guard(5)
+	battle.enemy.add_guard(5)
+	battle.player.statuses.apply(StrengthStatus.ID, 2, 2)
+	battle.enemy.statuses.apply(StrengthStatus.ID, 2, 2)
+
+	t.check(battle.player.hp < battle.player.max_hp, "player took damage before restart")
+	t.check(battle.enemy.hp < battle.enemy.max_hp, "enemy took damage before restart")
+
+	battle.restart()
+
+	t.check_eq(battle.player.hp, battle.player.max_hp, "restart returns the player to full hp")
+	t.check_eq(battle.enemy.hp, battle.enemy.max_hp, "restart returns the enemy to full hp")
+	t.check_eq(battle.player.guard, 0, "restart clears the player's guard")
+	t.check_eq(battle.enemy.guard, 0, "restart clears the enemy's guard")
+	t.check_eq(battle.player.statuses.get_stacks(StrengthStatus.ID), 0, "restart clears the player's statuses")
+	t.check_eq(battle.enemy.statuses.get_stacks(StrengthStatus.ID), 0, "restart clears the enemy's statuses")
+	t.check_eq(battle.ap, BattleConfig.AP_PER_TURN, "restart resets AP to 3")
+	t.check_eq(battle.deck.hand.size(), BattleConfig.HAND_SIZE, "restart deals a fresh hand of 5")
+	t.check_eq(battle.deck.total_cards(), 12, "restart preserves the 12-card deck total")
+	t.check_eq(battle.brain.current_action, EnemyBrain.Action.ATTACK, "restart returns the enemy brain to ATTACK")
+	t.check(not battle.is_over, "restart clears is_over")
+	t.check_eq(battle.turn_number, 1, "restart returns to turn 1")
