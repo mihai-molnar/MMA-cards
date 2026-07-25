@@ -2,53 +2,67 @@ class_name BattleHud
 extends Control
 
 ## Everything that is not a card: turn and intent readouts, the two fighter
-## panels, the log, pile counts, AP, buttons, and the result banner.
-## Renders what it is told; computes no rules.
+## panels, pile counts, AP, buttons, and the result banner. Renders what it
+## is told; computes no rules.
 
 signal end_turn_pressed()
 signal restart_pressed()
 
 const PLAYER_COLOR: Color = Color(0.20, 0.40, 0.85)
 const ENEMY_COLOR: Color = Color(0.85, 0.25, 0.25)
-## The log sits at y=120 (see _log_label below), in the empty band between
-## the two fighter panels, well above even a hovered centre card -- whose top
-## edge reaches only ≈295 (HAND_BASE_Y minus the arch, minus HOVER_LIFT,
-## minus the growth HOVER_SCALE adds above its bottom-centre pivot; see
-## HandView.HAND_BASE_Y and Juice.HOVER_LIFT / HOVER_SCALE). 4 lines was
-## sized for the log's old position directly under the fan and is kept
-## unchanged -- the relocation removed the crowding that value was chosen
-## for, but there is no reason to grow it back.
-const LOG_LINES: int = 4
 
 ## z_index lifts a node above its parent's later siblings, so the banner must
 ## outrank a hovered (50) or lunging (60) card or they redraw over it.
 const RESULT_PANEL_Z: int = 100
 
-const PLAYER_PANEL_AT: Vector2 = Vector2(60, 90)
-const ENEMY_PANEL_AT: Vector2 = Vector2(832, 90)
-## x=940, not 900: the fanned hand's rightmost card reaches this far even
-## though its axis-aligned rect does not, because the card is rotated up to
-## MAX_FAN_ANGLE_DEG about its bottom-centre pivot (see
-## HandView.rotated_right_edge). At HandView.CARD_STEP_X = 100 the true
-## corner of the rightmost card in a 5-card hand sits at ~901, so x=900 left
-## it overlapping this button by about a pixel and the AP label above it.
-## x=940 clears that true corner by ~39px. END_TURN_SIZE.x = 180 puts the
-## button's right edge at 1120 in the 1152-wide design space -- a 32px
-## margin.
-const END_TURN_AT: Vector2 = Vector2(940, 520)
-const END_TURN_SIZE: Vector2 = Vector2(180, 48)
+## Panels shrank and moved up to free vertical room for the larger card fan.
+## (24, 56): a 24px margin from the left edge, mirrored by ENEMY_PANEL_AT's
+## 24px margin from the right (1152 - 24 - PANEL_SIZE.x = 918). Panels then
+## occupy y 56..232 (FighterPanel.PANEL_SIZE.y = 176), clear of the deal-in
+## fan (HandView.HAND_BASE_Y = 311) with margin to spare even for a hovered
+## outer card -- see the HandView.HOVER_LIFT/HOVER_SCALE arithmetic in
+## HandView's own doc comments for that specific, tighter number.
+const PLAYER_PANEL_AT: Vector2 = Vector2(24, 56)
+const ENEMY_PANEL_AT: Vector2 = Vector2(918, 56)
+
+## Corner controls, pushed toward the edges to give the enlarged card fan the
+## centre of the screen. END_TURN_AT.x = 985: the fanned hand's rightmost
+## card is rotated up to HandView.MAX_FAN_ANGLE_DEG about its bottom-centre
+## pivot, so its true right-side edge is a line between two corners, not the
+## axis-aligned rect edge (see HandView.rotated_right_edge_at_y). That edge
+## crosses this button's top edge (y=570, the tightest point across the
+## button's height -- see test_hand_arc.gd) at x ≈ 967, ~18px clear.
+## END_TURN_SIZE.x = 150 puts the button's right edge at 1135, 17px from the
+## design space's right edge (1152).
+const END_TURN_AT: Vector2 = Vector2(985, 570)
+const END_TURN_SIZE: Vector2 = Vector2(150, 48)
+
+## Bottom-left corner controls. AP_LABEL_AT.x = 16 and DRAW_LABEL_AT.x = 16
+## mirror END_TURN_AT/DISCARD_LABEL_AT on the right. The leftmost fanned
+## card's true left-side edge (HandView.rotated_left_edge_at_y) sits at
+## x ≈ 182 where it crosses AP_LABEL_AT's row -- see test_hand_arc.gd for the
+## exact figure -- comfortably clear of the AP label's rendered width (well
+## under 100px at font size 24 for "AP  3 / 3", BattleConfig.AP_PER_TURN).
+const AP_LABEL_AT: Vector2 = Vector2(16, 556)
+const DRAW_LABEL_AT: Vector2 = Vector2(16, 596)
+
+## Bottom-right pile count, mirroring DRAW_LABEL_AT. Right-aligned within
+## DISCARD_LABEL_SIZE so its rendered right edge lands at
+## DISCARD_LABEL_AT.x + DISCARD_LABEL_SIZE.x = 1136 (16px from the design
+## space's right edge) regardless of digit count, rather than growing
+## rightward off the edge the way a left-aligned label would.
+const DISCARD_LABEL_AT: Vector2 = Vector2(936, 620)
+const DISCARD_LABEL_SIZE: Vector2 = Vector2(200, 24)
 
 var _turn_label: Label
 var _intent_label: Label
 var _ap_label: Label
-var _pile_label: Label
-var _log_label: Label
+var _draw_label: Label
+var _discard_label: Label
 var _player_panel: FighterPanel
 var _enemy_panel: FighterPanel
 var _result_panel: Control
 var _result_label: Label
-
-var _log_lines: Array[String] = []
 
 func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -77,12 +91,15 @@ func _build() -> void:
 	_enemy_panel.position = ENEMY_PANEL_AT
 	add_child(_enemy_panel)
 
-	_log_label = _add_label("", Vector2(430, 120), 14)
-	_log_label.modulate = Color(0.75, 0.75, 0.80)
+	# AP and draw sit bottom-left, End Turn and discard bottom-right -- the
+	# combat log that used to occupy the centre band is gone, so the middle
+	# of the screen is free for the larger card fan.
+	_ap_label = _add_label("", AP_LABEL_AT, 24)
+	_draw_label = _add_label("", DRAW_LABEL_AT, 14)
 
-	_pile_label = _add_label("", Vector2(24, 560), 14)
-
-	_ap_label = _add_label("", Vector2(940, 470), 24)
+	_discard_label = _add_label("", DISCARD_LABEL_AT, 14)
+	_discard_label.size = DISCARD_LABEL_SIZE
+	_discard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 	var end_turn := Button.new()
 	end_turn.text = "END TURN"
@@ -107,12 +124,12 @@ func _build_result_panel() -> void:
 
 	_result_label = Label.new()
 	_result_label.add_theme_font_size_override("font_size", 48)
-	_result_label.position = Vector2(430, 210)
+	_result_label.position = Vector2(400, 180)
 	_result_panel.add_child(_result_label)
 
 	var restart := Button.new()
 	restart.text = "RESTART"
-	restart.position = Vector2(470, 285)
+	restart.position = Vector2(476, 260)
 	restart.custom_minimum_size = Vector2(180, 48)
 	restart.pressed.connect(func() -> void: restart_pressed.emit())
 	_result_panel.add_child(restart)
@@ -138,9 +155,8 @@ func update_ap(current: int, maximum: int) -> void:
 func update_fighters(battle: BattleState) -> void:
 	_player_panel.update(battle.player)
 	_enemy_panel.update(battle.enemy)
-	_pile_label.text = "draw %d    discard %d" % [
-		battle.deck.draw_pile.size(), battle.deck.discard_pile.size()
-	]
+	_draw_label.text = "draw %d" % battle.deck.draw_pile.size()
+	_discard_label.text = "discard %d" % battle.deck.discard_pile.size()
 
 ## The larger of the two panels' most recent damage pulses, or 0 if neither
 ## took damage. Lets the view react to a hit without BattleState carrying a
@@ -168,16 +184,6 @@ func suppress_player_guard_pulse() -> void:
 
 func suppress_enemy_guard_pulse() -> void:
 	_enemy_panel.suppress_next_guard_pulse()
-
-func append_log(line: String) -> void:
-	_log_lines.append(line)
-	while _log_lines.size() > LOG_LINES:
-		_log_lines.pop_front()
-	_log_label.text = "\n".join(_log_lines)
-
-func clear_log() -> void:
-	_log_lines.clear()
-	_log_label.text = ""
 
 func show_result(player_won: bool) -> void:
 	_result_label.text = "YOU WIN" if player_won else "YOU LOSE"

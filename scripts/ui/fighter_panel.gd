@@ -9,8 +9,8 @@ extends Control
 ## `fighters_changed` carries no payload, so rather than changing BattleState for a
 ## cosmetic feature this panel remembers the previous hp/guard and diffs them.
 
-const PANEL_SIZE: Vector2 = Vector2(260, 260)
-const RECT_SIZE: Vector2 = Vector2(140, 160)
+const PANEL_SIZE: Vector2 = Vector2(210, 176)
+const RECT_SIZE: Vector2 = Vector2(104, 120)
 
 const DAMAGE_FLASH: Color = Color(1.0, 0.35, 0.35)
 const GUARD_FLASH: Color = Color(0.55, 0.85, 1.0)
@@ -79,8 +79,15 @@ func _build(display_name: String, rect_color: Color) -> void:
 	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_rect.add_child(_name_label)
 
-	_hp_label = _make_row_label(22, RECT_SIZE.y + 12.0)
-	_status_label = _make_row_label(16, RECT_SIZE.y + 44.0)
+	# Font sizes dropped from 22/16 to 18/14 alongside the panel shrink: the
+	# text itself still fits either way (measured against ThemeDB's fallback
+	# font, "PLAYER  50 / 50" is 161px wide at 22, comfortably under the new
+	# PANEL_SIZE.x = 210), but the smaller sizes trim a few pixels off the
+	# status row's vertical footprint -- worth having given how close a
+	# hovered outer card's lifted top edge (~241, see HandView's doc
+	# comments) sits to these panels' bottom (232).
+	_hp_label = _make_row_label(18, RECT_SIZE.y + 12.0)
+	_status_label = _make_row_label(14, RECT_SIZE.y + 44.0)
 	_status_label.modulate = STATUS_COLOR
 
 func _make_row_label(font_size: int, y: float) -> Label:

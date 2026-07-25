@@ -15,31 +15,33 @@ const FAN_ARCH_HEIGHT: float = 20.0
 ## a wide transparent glow border, so the *visible* card body is narrower
 ## than the CardView rect. Measured across all three source images the solid
 ## body spans ~852 of 1024px width, i.e. ~83.2% (x[85..937] for card_jab.png,
-## similar for the other two). At CARD_SIZE.x = 156 (cards were enlarged 30%
-## from an original 120px rect, keeping the 2:3 aspect) that is a visible
-## body of 156 * (852.0 / 1024.0) ≈ 129.8px.
+## similar for the other two). At CARD_SIZE.x = 200 (the reflow that made
+## room for larger cards -- see CardView.CARD_SIZE) that is a visible body of
+## 200 * (852.0 / 1024.0) ≈ 166.4px.
 ##
-## Was 116 (i.e. ~13.8px overlap of the visible body). Dropped to 100 because
-## the unrotated-box clearance check that justified 116 was wrong: cards
-## rotate up to MAX_FAN_ANGLE_DEG about their bottom-centre pivot
-## (CardView.pivot_offset), and the rotated top-outer corner reaches well
-## past the axis-aligned rect -- ~203px right of the rect's left edge at
-## 12deg on a 156x234 card, not 156px. At step 116 that true corner clears
-## the End Turn button's old position (x=900) by only a hair while the
-## unrotated check reported 14px of slack that didn't exist; see
-## rotated_right_edge() below and test_hand_arc.gd. At step 100 the true
-## corner sits at ~901, and battle_hud.gd's controls moved out to x=940 to
-## give it real room. This overlaps the visible body by 129.8 - 100 ≈ 29.8px
-## (~77% of each card still shown), heavier than the old fan but still
-## legible.
-const CARD_STEP_X: float = 100.0
+## Raised from 100 to 140 in the same reflow, keeping proportionally similar
+## overlap: 166.4 - 140 ≈ 26.4px (~16% of the visible body, close to the old
+## step's ~23% at the smaller card size). The rotation-aware clearance this
+## depends on is documented at rotated_right_edge() below and re-verified in
+## BattleHud.END_TURN_AT's own doc comment -- at CARD_STEP_X = 140 the
+## rightmost card's true right edge crosses END_TURN_AT.y (570) at x ≈ 967,
+## 18px clear of the button's new left edge (985).
+const CARD_STEP_X: float = 140.0
 const HAND_CENTRE_X: float = 576.0
 ## Bottom-most point of a tilted outer card must stay inside the 648-tall
 ## design space: HAND_BASE_Y + CARD_SIZE.y + (CARD_SIZE.x / 2) *
-## sin(MAX_FAN_ANGLE_DEG) = 377 + 234 + 78 * sin(12deg) ≈ 627.2, leaving
-## ~21px of margin. See test_hand_arc.gd's
+## sin(MAX_FAN_ANGLE_DEG) = 311 + 300 + 100 * sin(12deg) ≈ 631.8, leaving
+## ~16px of margin. See test_hand_arc.gd's
 ## _test_layout_invariants_across_hand_sizes for the assertion.
-const HAND_BASE_Y: float = 377.0
+##
+## Also the reflow's other binding vertical check: a hovered *outer* card
+## straightens (rotation -> 0) and lifts by Juice.HOVER_LIFT while scaling up
+## by Juice.HOVER_SCALE about its bottom-centre pivot, so its top edge
+## reaches HAND_BASE_Y - HOVER_LIFT - CARD_SIZE.y * (HOVER_SCALE - 1) =
+## 311 - 34 - 36 = 241. BattleHud's fighter panels end at y = 232
+## (PLAYER_PANEL_AT.y + FighterPanel.PANEL_SIZE.y), so that is only 9px of
+## clearance -- tight, but confirmed clear; see test_hand_arc.gd.
+const HAND_BASE_Y: float = 311.0
 
 ## Where a played card flies. Defaults are replaced by BattleView with the real
 ## fighter panel centres.
@@ -112,7 +114,9 @@ func layout_cards() -> void:
 ## edge, which is how the rightmost card in the fan came to overlap the AP
 ## label and End Turn button despite every existing check reporting
 ## clearance. Any clearance assertion against the fan's outer edge must use
-## this, not the raw rect.
+## this, not the raw rect. (Cards later grew to 200x300 for the larger-card
+## reflow -- see CardView.CARD_SIZE and CARD_STEP_X above -- but the same
+## principle and the same helper apply; only the numbers changed.)
 static func rotated_right_edge(rect_x: float, rotation_rad: float) -> float:
 	var half_width: float = CardView.CARD_SIZE.x / 2.0
 	var pivot_x: float = rect_x + half_width
@@ -127,6 +131,56 @@ static func rotated_left_edge(rect_x: float, rotation_rad: float) -> float:
 	var pivot_x: float = rect_x + half_width
 	var corner_offset: float = half_width * cos(rotation_rad) - CardView.CARD_SIZE.y * sin(rotation_rad)
 	return pivot_x - corner_offset
+
+## The card's four corners once rotated by `rotation_rad` about its
+## bottom-centre pivot, for a card whose unrotated rect has its top-left at
+## (rect_x, card_y). Order: top-left, top-right, bottom-left, bottom-right.
+## rotated_right_edge()/rotated_left_edge() above only ever needed the outer
+## top corner's x, because the controls they were checked against (the old,
+## taller End Turn button) spanned the card's entire relevant height. The
+## reflow's controls are short and sit low, occupying only part of the fan's
+## height, so a clearance check against them needs to know where the card's
+## edge actually is at that control's y -- which needs all four corners, not
+## just the single furthest-reaching one.
+static func rotated_corners(rect_x: float, card_y: float, rotation_rad: float) -> Array[Vector2]:
+	var half_width: float = CardView.CARD_SIZE.x / 2.0
+	var height: float = CardView.CARD_SIZE.y
+	var pivot: Vector2 = Vector2(rect_x + half_width, card_y + height)
+	var locals: Array[Vector2] = [
+		Vector2(-half_width, -height), Vector2(half_width, -height),
+		Vector2(-half_width, 0.0), Vector2(half_width, 0.0),
+	]
+	var corners: Array[Vector2] = []
+	for local: Vector2 in locals:
+		corners.append(pivot + local.rotated(rotation_rad))
+	return corners
+
+## X of the card's right-side edge -- the straight line between its rotated
+## top-right and bottom-right corners -- at a given `at_y`. Clamped to the
+## segment between the two corners. Use this instead of rotated_right_edge()
+## whenever the control being checked does not span the card's whole height:
+## rotated_right_edge() reports the single furthest-right point (the
+## top-right corner), which for a tilted card sits well above a short,
+## low control like End Turn and overstates what actually needs to clear it.
+static func rotated_right_edge_at_y(rect_x: float, card_y: float, rotation_rad: float, at_y: float) -> float:
+	var corners: Array[Vector2] = rotated_corners(rect_x, card_y, rotation_rad)
+	var top_right: Vector2 = corners[1]
+	var bottom_right: Vector2 = corners[3]
+	if is_equal_approx(top_right.y, bottom_right.y):
+		return maxf(top_right.x, bottom_right.x)
+	var frac: float = clampf((at_y - top_right.y) / (bottom_right.y - top_right.y), 0.0, 1.0)
+	return lerpf(top_right.x, bottom_right.x, frac)
+
+## Mirror of rotated_right_edge_at_y() for the card's left-side edge (the
+## line between its rotated top-left and bottom-left corners).
+static func rotated_left_edge_at_y(rect_x: float, card_y: float, rotation_rad: float, at_y: float) -> float:
+	var corners: Array[Vector2] = rotated_corners(rect_x, card_y, rotation_rad)
+	var top_left: Vector2 = corners[0]
+	var bottom_left: Vector2 = corners[2]
+	if is_equal_approx(top_left.y, bottom_left.y):
+		return minf(top_left.x, bottom_left.x)
+	var frac: float = clampf((at_y - top_left.y) / (bottom_left.y - top_left.y), 0.0, 1.0)
+	return lerpf(top_left.x, bottom_left.x, frac)
 
 ## Updates affordability dimming and combo highlights without rebuilding.
 func refresh_states(battle: BattleState) -> void:

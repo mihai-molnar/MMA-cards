@@ -60,7 +60,6 @@ func _connect_battle() -> void:
 	battle.hand_changed.connect(_on_hand_changed)
 	battle.fighters_changed.connect(_on_fighters_changed)
 	battle.intent_changed.connect(hud.update_intent)
-	battle.log_line.connect(hud.append_log)
 	battle.battle_over.connect(_on_battle_over)
 
 func _on_turn_started(turn_number: int) -> void:
@@ -69,7 +68,6 @@ func _on_turn_started(turn_number: int) -> void:
 	# fighters_changed, so this lands in time to suppress that panel's pulse.
 	hud.suppress_player_guard_pulse()
 	hud.update_turn(turn_number)
-	hud.append_log("-- Turn %d --" % turn_number)
 	# turn_started always fires immediately before the hand_changed for the
 	# freshly-drawn hand (see BattleState._begin_player_turn) -- arm the very
 	# next rebuild to deal the hand in, rather than every rebuild.
@@ -140,7 +138,6 @@ func _on_battle_over(player_won: bool) -> void:
 
 func _on_restart_pressed() -> void:
 	hud.hide_result()
-	hud.clear_log()
 	# A player who wins at full HP while still holding guard would otherwise
 	# get a spurious pulse when restart() zeroes it out.
 	hud.suppress_player_guard_pulse()

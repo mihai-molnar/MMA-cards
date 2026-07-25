@@ -6,7 +6,7 @@ extends Button
 
 signal card_selected(view: CardView)
 
-const CARD_SIZE: Vector2 = Vector2(156, 234)
+const CARD_SIZE: Vector2 = Vector2(200, 300)
 const ATTACK_COLOR: Color = Color(0.32, 0.16, 0.16)
 const DEFENSE_COLOR: Color = Color(0.16, 0.20, 0.32)
 const COMBO_BORDER_COLOR: Color = Color(1.0, 0.80, 0.20)
