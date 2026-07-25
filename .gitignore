@@ -4,3 +4,6 @@
 
 # Agent worktrees (scratch)
 .claude/worktrees/
+
+# Orchestration scratch (task briefs, reports, ledgers)
+.superpowers/
