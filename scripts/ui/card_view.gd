@@ -12,6 +12,11 @@ const DEFENSE_COLOR: Color = Color(0.16, 0.20, 0.32)
 const COMBO_BORDER_COLOR: Color = Color(1.0, 0.80, 0.20)
 const UNAFFORDABLE_ALPHA: float = 0.45
 
+## Overlapping same-coloured cards otherwise fuse into one shape; this border
+## reads as the gap between fanned cards because it matches the page background.
+const BORDER_WIDTH: float = 3.0
+const BORDER_COLOR: Color = Color(0.05, 0.05, 0.07)
+
 const HOVER_LIFT: float = 28.0
 const HOVER_SCALE: float = 1.08
 const HOVER_TIME: float = 0.12
@@ -37,6 +42,7 @@ var target_scale: Vector2 = Vector2.ONE
 var _hovered: bool = false
 var _tween: Tween
 
+var _border: ColorRect
 var _background: ColorRect
 var _name_label: Label
 var _cost_label: Label
@@ -59,8 +65,18 @@ func _init() -> void:
 	mouse_exited.connect(_on_mouse_exited)
 
 func _build() -> void:
+	_border = ColorRect.new()
+	_border.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_border.color = BORDER_COLOR
+	_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_border)
+
 	_background = ColorRect.new()
 	_background.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_background.offset_left = BORDER_WIDTH
+	_background.offset_top = BORDER_WIDTH
+	_background.offset_right = -BORDER_WIDTH
+	_background.offset_bottom = -BORDER_WIDTH
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background)
 

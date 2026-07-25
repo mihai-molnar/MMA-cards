@@ -12,7 +12,7 @@ const FAN_ARCH_HEIGHT: float = 20.0
 ## Less than CARD_SIZE.x, so cards overlap slightly like a real fan.
 const CARD_STEP_X: float = 100.0
 const HAND_CENTRE_X: float = 576.0
-const HAND_BASE_Y: float = 470.0
+const HAND_BASE_Y: float = 430.0
 
 ## Where a played card flies. Defaults are replaced by BattleView with the real
 ## fighter panel centres.
