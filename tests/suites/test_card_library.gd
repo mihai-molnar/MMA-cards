@@ -38,3 +38,20 @@ func _test_starting_deck(t: TestRunner) -> void:
 	# Each deck entry must be an independent instance — a shared resource would
 	# let per-card state leak between copies later.
 	t.check(deck[0] != deck[1] or deck[0].id != deck[1].id, "deck entries are separate instances")
+
+	# Top-level identity alone proves nothing: duplicate() always allocates a
+	# new CardData wrapper, shallow or deep. The real hazard is two copies of
+	# the same card sharing an *effect* object underneath — find two jabs
+	# (the deck guarantees at least two) and prove their effects are distinct,
+	# independently mutable objects rather than the same DamageEffect.
+	var jabs: Array[CardData] = deck.filter(func(card: CardData) -> bool: return card.id == &"jab")
+	t.check(jabs.size() >= 2, "deck has at least two jabs to compare")
+	var jab_a: CardData = jabs[0]
+	var jab_b: CardData = jabs[1]
+	t.check(jab_a.effects[0] != jab_b.effects[0], "duplicated jabs do not share an effect object")
+
+	var effect_a: DamageEffect = jab_a.effects[0] as DamageEffect
+	var effect_b: DamageEffect = jab_b.effects[0] as DamageEffect
+	var original_amount: int = effect_b.amount
+	effect_a.amount += 1000
+	t.check_eq(effect_b.amount, original_amount, "mutating one jab's effect leaves the other jab's effect unchanged")

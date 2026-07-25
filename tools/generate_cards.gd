@@ -4,8 +4,13 @@ extends SceneTree
 ## Run: godot --headless --path . --script res://tools/generate_cards.gd
 ##
 ## Cards are generated rather than hand-written so the .tres format is always
-## valid. The output is a normal resource — edit it in the inspector, or add a
-## new card by extending CARDS below and re-running.
+## valid. The output is a normal resource — edit it in the inspector, or
+## regenerate it here.
+##
+## To add a new card: write a _make_*() function below that builds and
+## returns a CardData, call _save() on it from _initialize(), and — if it
+## should appear in the starting deck — add its id to
+## BattleConfig.DECK_COMPOSITION.
 
 const OUTPUT_DIR: String = "res://resources/cards"
 
