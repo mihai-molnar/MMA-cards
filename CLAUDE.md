@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `218 checks, 0 failures` / `PASS`.
+on a clean tree ends with `436 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -172,6 +172,124 @@ by "tidying":
 If these two expiry points are ever merged into "the same moment," the game
 still runs and tests may still look plausible — check them explicitly.
 
+## The presentation layer
+
+Three rules govern `scripts/ui/`. Each of them has already been broken once,
+and in every case the symptom was *silent wrongness*, not a crash — which is
+why they are written down.
+
+**1. A card's transform is composed, never assigned.** `CardView._process`
+builds the live transform every frame from three layers:
+
+```
+position = target_position + idle_sway + cursor_tilt
+rotation = target_rotation + idle_rotation + tilt_rotation
+scale    = target_scale
+```
+
+**Tweens must target `target_position` / `target_rotation` / `target_scale`.**
+A tween on `position` gets silently overwritten by `_process` on the next
+frame — you get jitter, not a clean failure, and it is genuinely hard to
+diagnose. `set_rest_transform` and the out-of-tree branches write the live
+properties directly on purpose (there is no `_process` off-tree, and the tests
+depend on it); those are the only legitimate exceptions.
+
+**2. Every card animation goes through `CardView`'s single `_tween` slot.**
+`_animate_to` (hover), `lunge_to` (play), `_on_button_down` (squash),
+`spring_to` and `slide_from` all kill the existing `_tween` and claim it. That
+mutual exclusion is the only thing preventing two tweens from driving the same
+property at once. A tween created on a *different* node — say, `HandView`
+animating a card — is invisible to that kill, and the two then fight; the
+winner is decided by Godot's tween processing order. This is exactly how
+hovering a card silently stopped lifting for 0.4s after every play. **If you
+need the hand to move a card, add a method to `CardView`; never create a tween
+for a card from outside it.**
+
+**3. `create_tween()` on a node outside the scene tree pushes an engine error,
+and `run_tests.sh` fails on engine error markers.** Tests build these nodes
+detached, so every animation entry point needs an `is_inside_tree()` guard —
+and any decision-recording must happen *before* the guard, or the tests can no
+longer assert it.
+
+## Game feel
+
+**Every duration, curve and magnitude lives in `scripts/ui/juice.gd`.** Not in
+`BattleConfig` (that is game balance), not scattered across UI files. Juice is
+tuned by eye, so "that felt too slow" must be a one-line change in one known
+place. Layout constants are separate and stay with their owner: card geometry
+in `card_view.gd`, fan geometry in `hand_view.gd`, HUD positions in
+`battle_hud.gd`.
+
+`ScreenFx` owns two effects that fail *catastrophically* rather than
+cosmetically, and both are written to be self-correcting. Do not simplify
+either guard away:
+
+- **Hit-stop lowers `Engine.time_scale`.** If it never restored, the game
+  would be frozen forever. It is released by a timer created with
+  `ignore_time_scale = true` (without that flag the timer is slowed by the very
+  freeze it ends) *and* by a watchdog in `_process` measured against real time.
+- **Shake offsets the `CanvasLayer`.** A stuck offset leaves the whole UI
+  permanently crooked. Shake always tweens back to a **stored home value**,
+  never by accumulating deltas, so overlapping shakes still land on home.
+
+"Store a home value, never accumulate" is the house rule for anything that
+animates away from a resting state and back. `FighterPanel._flash_rect` once
+captured the *live* colour as its home, and the fighter rectangles bleached
+permanently toward pink over a session.
+
+**`FighterPanel` derives damage feedback by diffing hp/guard itself**, so
+`BattleState` needs no damage payload and `scripts/core/` stays presentation-
+free. One subtlety: guard clearing at a turn start is indistinguishable from
+guard absorbing a hit in such a diff, so `BattleView` calls
+`suppress_next_guard_pulse()` at the three moments guard expires. Without it
+the game tells the player their Block worked on the two-in-three enemy turns
+that deal no damage.
+
+## Verifying animation — tests cannot see motion
+
+This is the most important lesson in the project.
+
+`CardView._animate_to` once assigned `target_*` to its destination *before*
+creating the tween meant to animate toward that destination. Every hover tween
+interpolated from-final-to-final: a real timer producing zero motion. The card
+teleported. **387 tests passed over it** — they built `CardView` detached
+(taking the correct snap branch) and asserted the *target* value, which was
+correct instantly.
+
+It was found by capturing 12 consecutive frames and noticing they were
+pixel-identical.
+
+```bash
+"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --path . --script res://tools/capture_frames.gd
+```
+
+`tools/capture_frames.gd` tiles consecutive frames into one contact sheet so a
+curve becomes inspectable — overshoot and settle versus a linear slide versus a
+snap. **For anything whose value is motion, an assertion on the end state
+proves nothing.** Capture frames, or sample the animated value across frames
+and print the series.
+
+Two practical notes: run it **non-headless** (`get_texture()` needs a rendering
+context; `DisplayServer.window_get_size()` reports `(0,0)` headless), and pace
+captures by **real elapsed time, not frame count** — this machine's display
+runs at 100Hz, and a frame-count stride tuned at 60Hz cuts longer animations
+off mid-flight.
+
+## Layout geometry
+
+The hand is a fan: cards rotate up to ±12° about their **bottom-centre**.
+Clearance against the HUD must therefore be measured against the **rotated
+silhouette**, not the axis-aligned rect — the corner swings ~47px past the box
+at the current card size, which is how a card came to overlap the End Turn
+button while the test happily reported clearance. `HandView` exposes
+row-aware helpers for this; use them rather than `rest_position.x + CARD_SIZE.x`.
+
+`BattleConfig.HAND_SIZE` is capped by that clearance, and
+`tests/suites/test_hand_arc.gd` asserts the ceiling so raising the hand size
+trips a test instead of silently breaking a button. Two separate tests assert
+clearance — a single-size case and a parameterised loop — and they have been
+missed one at a time before; grep for both.
+
 ## Conventions
 
 - Typed GDScript: explicit parameter and return types on every function.
@@ -203,5 +321,31 @@ still runs and tests may still look plausible — check them explicitly.
 
 ## Design docs
 
-- Spec: `docs/superpowers/specs/2026-07-25-mma-cards-poc-design.md`
-- Plan: `docs/superpowers/plans/2026-07-25-mma-cards-poc.md`
+Three passes, each with a spec and a plan, in `docs/superpowers/`:
+
+| Pass | Spec | Plan |
+|---|---|---|
+| Combat POC (rules) | `specs/2026-07-25-mma-cards-poc-design.md` | `plans/2026-07-25-mma-cards-poc.md` |
+| UI polish (layout, hover, hit feedback) | `specs/2026-07-25-ui-polish-design.md` | `plans/2026-07-25-ui-polish.md` |
+| Game feel (juice) | `specs/2026-07-25-juice-design.md` | `plans/2026-07-25-juice.md` |
+
+The specs record *why* decisions were made, including several that look
+arbitrary in the code — the guard/status expiry asymmetry, the strictly-
+consecutive combo, the transform composition layer. Read the relevant one
+before changing behaviour it covers.
+
+Note the specs are historical: where a spec and the code disagree, the code
+won during implementation and the spec was usually amended, but not always.
+`CLAUDE.md` (this file) is the current truth.
+
+## State of the project
+
+Playable single battle, fully art-directed, 436 headless checks. What is
+conspicuously still placeholder:
+
+- **The fighters are flat coloured rectangles.** With painted cards on screen
+  they are now the only unfinished-looking element. `FighterPanel` would take
+  portrait art the same way `CardView` took card art.
+- **No sound.** Deliberately deferred from the juice pass — it needs audio
+  assets, and it is the single largest remaining contributor to game feel.
+- **One battle, no run structure**, no deck-building, no card rewards.
