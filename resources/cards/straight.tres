@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/card_effect.gd" id="1_4s6pe"]
+[ext_resource type="Script" path="res://scripts/core/effects/damage_effect.gd" id="2_8x860"]
+[ext_resource type="Script" path="res://scripts/core/card_data.gd" id="3_it3nq"]
+
+[sub_resource type="Resource" id="Resource_akwbd"]
+script = ExtResource("2_8x860")
+amount = 9
+
+[resource]
+script = ExtResource("3_it3nq")
+id = &"straight"
+display_name = "STRAIGHT"
+cost = 2
+tags = Array[StringName]([&"straight", &"attack"])
+effects = Array[ExtResource("1_4s6pe")]([SubResource("Resource_akwbd")])
+rules_text = "Deal 9 damage."
