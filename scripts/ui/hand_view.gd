@@ -13,17 +13,22 @@ const FAN_ARCH_HEIGHT: float = 20.0
 ##
 ## Chosen from the art's own margins, not CARD_SIZE.x: the card images carry
 ## a wide transparent glow border, so the *visible* card body is narrower
-## than the 120px CardView rect. Measured across all three source images the
-## solid body spans ~852 of 1024px width, i.e. ~83% (x[85..937] for
-## card_jab.png, similar for the other two). At CARD_SIZE.x = 120 that is a
-## visible body of 120 * (852.0 / 1024.0) ≈ 99.8px. A step of 100 (the old
-## value, sized for the full 120px rect) would put those visible bodies
-## edge-to-edge with ~0px overlap -- the fan would read as a gappy row. This
-## value instead overlaps the visible bodies by 99.8 - 86 ≈ 13.8px, inside
-## the 12-15px target.
-const CARD_STEP_X: float = 86.0
+## than the CardView rect. Measured across all three source images the solid
+## body spans ~852 of 1024px width, i.e. ~83.2% (x[85..937] for card_jab.png,
+## similar for the other two). At CARD_SIZE.x = 156 (cards were enlarged 30%
+## from an original 120px rect, keeping the 2:3 aspect) that is a visible
+## body of 156 * (852.0 / 1024.0) ≈ 129.8px. This value overlaps those
+## visible bodies by 129.8 - 116 ≈ 13.8px -- matching the ~13.8px overlap the
+## fan had at the original size (86px step against a 99.8px visible body at
+## CARD_SIZE.x = 120), so the fan reads the same regardless of card size.
+const CARD_STEP_X: float = 116.0
 const HAND_CENTRE_X: float = 576.0
-const HAND_BASE_Y: float = 430.0
+## Bottom-most point of a tilted outer card must stay inside the 648-tall
+## design space: HAND_BASE_Y + CARD_SIZE.y + (CARD_SIZE.x / 2) *
+## sin(MAX_FAN_ANGLE_DEG) = 377 + 234 + 78 * sin(12deg) ≈ 627.2, leaving
+## ~21px of margin. See test_hand_arc.gd's
+## _test_layout_invariants_across_hand_sizes for the assertion.
+const HAND_BASE_Y: float = 377.0
 
 ## Where a played card flies. Defaults are replaced by BattleView with the real
 ## fighter panel centres.

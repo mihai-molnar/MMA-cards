@@ -10,9 +10,14 @@ signal restart_pressed()
 
 const PLAYER_COLOR: Color = Color(0.20, 0.40, 0.85)
 const ENEMY_COLOR: Color = Color(0.85, 0.25, 0.25)
-## 4, not 5: the log sits at y=300, and a hovered centre card's top edge
-## reaches ≈368 (see HandView.HAND_BASE_Y). 5 lines pushed the log's last
-## line or two under that card; 4 keeps the whole log clear of it.
+## The log sits at y=120 (see _log_label below), in the empty band between
+## the two fighter panels, well above even a hovered centre card -- whose top
+## edge reaches only ≈295 (HAND_BASE_Y minus the arch, minus HOVER_LIFT,
+## minus the growth HOVER_SCALE adds above its bottom-centre pivot; see
+## HandView.HAND_BASE_Y and Juice.HOVER_LIFT / HOVER_SCALE). 4 lines was
+## sized for the log's old position directly under the fan and is kept
+## unchanged -- the relocation removed the crowding that value was chosen
+## for, but there is no reason to grow it back.
 const LOG_LINES: int = 4
 
 ## z_index lifts a node above its parent's later siblings, so the banner must
@@ -63,7 +68,7 @@ func _build() -> void:
 	_enemy_panel.position = ENEMY_PANEL_AT
 	add_child(_enemy_panel)
 
-	_log_label = _add_label("", Vector2(430, 300), 14)
+	_log_label = _add_label("", Vector2(430, 120), 14)
 	_log_label.modulate = Color(0.75, 0.75, 0.80)
 
 	_pile_label = _add_label("", Vector2(24, 560), 14)
@@ -93,12 +98,12 @@ func _build_result_panel() -> void:
 
 	_result_label = Label.new()
 	_result_label.add_theme_font_size_override("font_size", 48)
-	_result_label.position = Vector2(430, 170)
+	_result_label.position = Vector2(430, 210)
 	_result_panel.add_child(_result_label)
 
 	var restart := Button.new()
 	restart.text = "RESTART"
-	restart.position = Vector2(470, 245)
+	restart.position = Vector2(470, 285)
 	restart.custom_minimum_size = Vector2(180, 48)
 	restart.pressed.connect(func() -> void: restart_pressed.emit())
 	_result_panel.add_child(restart)

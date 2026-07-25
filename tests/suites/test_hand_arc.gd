@@ -86,17 +86,19 @@ func _test_clear_hover(t: TestRunner) -> void:
 	t.check(not card.is_card_hovered(), "clear_hover drops every card back to rest")
 	view.free()
 
-## right_edge = 636 + 50 * (n - 1): clearance of the End Turn button (x=900)
-## holds only up to n=6 (886, 14px slack); n=7 would reach 936 and overlap it.
-## Both invariants below are asserted across every hand size the game can
-## actually deal, not just the five-card case above, so a future change to
-## HAND_SIZE or the arc constants trips a test instead of silently breaking
-## End Turn or clipping the bottom of the design space.
+## right_edge = 654 + 58 * (n - 1): clearance of the End Turn button (x=900)
+## holds only up to n=5 (886, 14px slack); n=6 would reach 944 and overlap
+## it -- which is exactly why HAND_SIZE's ceiling dropped from 6 to 5 when
+## the cards grew ~30% (see _test_hand_size_ceiling). Both invariants below
+## are asserted across every hand size the game can actually deal, not just
+## the five-card case above, so a future change to HAND_SIZE or the arc
+## constants trips a test instead of silently breaking End Turn or clipping
+## the bottom of the design space.
 func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 	var pool: Array[StringName] = [
-		&"jab", &"straight", &"jab", &"block", &"straight", &"jab"
+		&"jab", &"straight", &"jab", &"block", &"straight"
 	]
-	for n: int in range(1, 7):
+	for n: int in range(1, 6):
 		var ids: Array = pool.slice(0, n)
 		var view: HandView = _hand_with(ids)
 		t.check_eq(view.get_child_count(), n, "hand of %d builds %d cards" % [n, n])
@@ -118,10 +120,22 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 				"hand of %d card %d stays inside the design space (bottom %f)" % [n, index, bottom_y])
 		view.free()
 
-## Raising HAND_SIZE past 6 would silently break End Turn (see
+## Raising HAND_SIZE past 5 would silently break End Turn (see
 ## _test_layout_invariants_across_hand_sizes) because the fan's clearance
-## arithmetic only holds through n=6. This turns that into a loud test
+## arithmetic only holds through n=5. This turns that into a loud test
 ## failure instead.
+##
+## The ceiling dropped from 6 to 5 when the cards grew ~30% (CARD_SIZE
+## 120x180 -> 156x234, CARD_STEP_X 86 -> 116): the wider step and wider card
+## push the n=6 right edge to 944, past the End Turn button at x=900, where
+## the old, smaller cards cleared it at n=6 with 14px to spare.
+##
+## Also note: like _test_layout_invariants_across_hand_sizes, this still only
+## covers the ceiling implied by that test's unrotated bounding-box check --
+## it was already a slight overestimate of clearance before the card size
+## changed, since a fanned card's true rotated corner sits marginally further
+## right than its axis-aligned bounding box. Not reworked here to stay
+## rotation-aware; keeping this change minimal.
 func _test_hand_size_ceiling(t: TestRunner) -> void:
-	t.check(BattleConfig.HAND_SIZE <= 6,
-		"HAND_SIZE must stay <= 6 -- the fan only clears the End Turn button up to 6 cards")
+	t.check(BattleConfig.HAND_SIZE <= 5,
+		"HAND_SIZE must stay <= 5 -- the fan only clears the End Turn button up to 5 cards")
