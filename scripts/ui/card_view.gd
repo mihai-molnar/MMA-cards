@@ -17,13 +17,8 @@ const UNAFFORDABLE_ALPHA: float = 0.45
 const BORDER_WIDTH: float = 3.0
 const BORDER_COLOR: Color = Color(0.05, 0.05, 0.07)
 
-const HOVER_LIFT: float = 28.0
-const HOVER_SCALE: float = 1.08
-const HOVER_TIME: float = 0.12
 const HOVER_Z: int = 50
 const LUNGE_Z: int = 60
-const LUNGE_TIME: float = 0.28
-const LUNGE_SCALE: float = 1.15
 
 var card: CardData
 
@@ -47,6 +42,16 @@ var debug_last_lunge_anchor: Vector2 = Vector2.ZERO
 var _hovered: bool = false
 var _tween: Tween
 
+## Continuous-motion layers, added on top of the tweened target_* values every
+## frame. See _process.
+var _idle_phase: float = 0.0
+var _idle_offset: Vector2 = Vector2.ZERO
+var _idle_rotation: float = 0.0
+var _tilt_offset: Vector2 = Vector2.ZERO
+var _tilt_rotation: float = 0.0
+var _elapsed: float = 0.0
+var _lunging: bool = false
+
 var _border: ColorRect
 var _background: ColorRect
 var _name_label: Label
@@ -66,8 +71,60 @@ func _init() -> void:
 	flat = true
 	clip_contents = true
 	_build()
+	_idle_phase = randf() * TAU
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
+	button_down.connect(_on_button_down)
+
+## The live transform is composed from three layers every frame:
+##   target_* : absolute values the tweens drive (hover, squash, lunge, deal)
+##   idle     : continuous sway, additive, paused while hovered or lunging
+##   tilt     : cursor lean, additive, hovered card only
+##
+## Tweens therefore must NEVER target position/rotation/scale directly — this
+## loop would overwrite them every frame and the result would be jitter rather
+## than a clean failure.
+func _process(delta: float) -> void:
+	_elapsed += delta
+	_update_idle()
+	_update_tilt(delta)
+	position = Juice.compose_position(target_position, _idle_offset, _tilt_offset)
+	rotation = Juice.compose_rotation(target_rotation, _idle_rotation, _tilt_rotation)
+	scale = target_scale
+
+func _update_idle() -> void:
+	# Hovering stops the sway: the card being read is the one card holding
+	# still. A lunging card is already fully driven by its tween.
+	if _hovered or _lunging:
+		_idle_offset = Vector2.ZERO
+		_idle_rotation = 0.0
+		return
+	_idle_offset = Juice.idle_offset(_elapsed, _idle_phase)
+	_idle_rotation = Juice.idle_rotation(_elapsed, _idle_phase)
+
+## Leans the hovered card toward the cursor, Balatro-style. Only the hovered
+## card tilts — cheaper, and unread cards stay still.
+func _update_tilt(delta: float) -> void:
+	var want_offset := Vector2.ZERO
+	var want_rotation: float = 0.0
+	if _hovered and not _lunging and is_inside_tree():
+		var to_cursor: Vector2 = get_global_mouse_position() - (global_position + CARD_SIZE / 2.0)
+		var nx: float = clampf(to_cursor.x / (CARD_SIZE.x * 1.5), -1.0, 1.0)
+		var ny: float = clampf(to_cursor.y / (CARD_SIZE.y * 1.5), -1.0, 1.0)
+		want_rotation = deg_to_rad(nx * Juice.TILT_MAX_DEG)
+		want_offset = Vector2(nx, ny) * Juice.TILT_MAX_PX
+	var weight: float = clampf(delta * Juice.TILT_LERP_SPEED, 0.0, 1.0)
+	_tilt_offset = _tilt_offset.lerp(want_offset, weight)
+	_tilt_rotation = lerpf(_tilt_rotation, want_rotation, weight)
+
+func debug_idle_offset() -> Vector2:
+	return _idle_offset
+
+func debug_tilt() -> Vector2:
+	return _tilt_offset
+
+func is_lunging() -> bool:
+	return _lunging
 
 func _build() -> void:
 	_border = ColorRect.new()
@@ -202,53 +259,71 @@ func apply_hover(value: bool) -> void:
 	_hovered = value
 	if value:
 		z_index = HOVER_Z
-		_animate_to(rest_position - Vector2(0.0, HOVER_LIFT), 0.0, Vector2.ONE * HOVER_SCALE)
+		_animate_to(rest_position - Vector2(0.0, Juice.HOVER_LIFT), 0.0, Vector2.ONE * Juice.HOVER_SCALE)
 	else:
 		z_index = rest_z_index
 		_animate_to(rest_position, rest_rotation, Vector2.ONE)
+	_update_idle()
 
-## The played-card animation. The card must already have been reparented out of
-## HandView, or the imminent rebuild will free it mid-tween.
+## The played-card animation: a short backswing away from the target, then the
+## strike. The card must already have been reparented out of HandView.
 func lunge_to(anchor: Vector2) -> void:
 	debug_last_lunge_anchor = anchor
-	# A hover tween (started by apply_hover, e.g. from clicking a hovered
-	# card) is very likely still live at this point. Without killing it here,
-	# remove_child/add_child during the reparent that precedes this call
-	# pauses then resumes it, and it would keep driving position/rotation/
-	# scale alongside the lunge tween below.
-	if _tween != null and _tween.is_valid():
-		_tween.kill()
+	_lunging = true
 	z_index = LUNGE_Z
 	disabled = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if not is_inside_tree():
-		queue_free()
-		return
-	var tween := create_tween()
-	tween.tween_property(self, "position", anchor - CARD_SIZE / 2.0, LUNGE_TIME)
-	tween.parallel().tween_property(self, "scale", Vector2.ONE * LUNGE_SCALE, LUNGE_TIME)
-	tween.parallel().tween_property(self, "rotation", 0.0, LUNGE_TIME)
-	tween.parallel().tween_property(self, "modulate:a", 0.0, LUNGE_TIME)
-	tween.chain().tween_callback(queue_free)
-
-func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
-	target_position = p_position
-	target_rotation = p_rotation
-	target_scale = p_scale
-	# Kill any live tween before either branch below: the out-of-tree path
-	# used to skip this, so a tween started while the card was in the tree
-	# (e.g. a hover) could keep running and later fight a fresh one.
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 	if not is_inside_tree():
+		queue_free()
+		return
+
+	var centre: Vector2 = target_position + CARD_SIZE / 2.0
+	var toward: Vector2 = (anchor - centre).normalized()
+	var wind_up: Vector2 = target_position - toward * Juice.ANTICIPATE_DIST
+
+	var tween := create_tween()
+	# Anticipation: pull back before striking, so the punch has a windup.
+	tween.tween_property(self, "target_position", wind_up, Juice.ANTICIPATE_TIME) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(self, "target_scale", Juice.SQUASH_SCALE, Juice.ANTICIPATE_TIME)
+	# The strike: accelerate into the target, stretched along travel.
+	tween.chain().tween_property(self, "target_position", anchor - CARD_SIZE / 2.0, Juice.LUNGE_TIME) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(self, "target_scale",
+		Juice.STRETCH_SCALE * Juice.LUNGE_SCALE, Juice.LUNGE_TIME)
+	tween.parallel().tween_property(self, "target_rotation", 0.0, Juice.LUNGE_TIME)
+	tween.parallel().tween_property(self, "modulate:a", 0.0, Juice.LUNGE_TIME)
+	tween.chain().tween_callback(queue_free)
+	_tween = tween
+
+func _animate_to(p_position: Vector2, p_rotation: float, p_scale: Vector2) -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	target_position = p_position
+	target_rotation = p_rotation
+	target_scale = p_scale
+	if not is_inside_tree():
+		# No _process off-tree, so snap the live transform for tests.
 		position = p_position
 		rotation = p_rotation
 		scale = p_scale
 		return
-	_tween = create_tween()
-	_tween.tween_property(self, "position", p_position, HOVER_TIME)
-	_tween.parallel().tween_property(self, "rotation", p_rotation, HOVER_TIME)
-	_tween.parallel().tween_property(self, "scale", p_scale, HOVER_TIME)
+	_tween = Juice.spring(create_tween())
+	_tween.tween_property(self, "target_position", p_position, Juice.HOVER_TIME)
+	_tween.parallel().tween_property(self, "target_rotation", p_rotation, Juice.HOVER_TIME)
+	_tween.parallel().tween_property(self, "target_scale", p_scale, Juice.HOVER_TIME)
+
+## Compresses the card the instant it is pressed, before anything else happens.
+## Immediate physical response to a click is most of what makes it feel good.
+func _on_button_down() -> void:
+	if not is_inside_tree():
+		return
+	var tween := create_tween()
+	tween.tween_property(self, "target_scale", Juice.SQUASH_SCALE, Juice.SQUASH_TIME)
+	tween.tween_property(self, "target_scale",
+		Vector2.ONE * Juice.HOVER_SCALE if _hovered else Vector2.ONE, Juice.SQUASH_TIME)
 
 func _on_mouse_entered() -> void:
 	apply_hover(true)
