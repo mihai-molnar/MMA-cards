@@ -13,6 +13,10 @@ const ENEMY_COLOR: Color = Color(0.85, 0.25, 0.25)
 const FIGHTER_SIZE: Vector2 = Vector2(140, 160)
 const LOG_LINES: int = 5
 
+## z_index lifts a node above its parent's later siblings, so the banner must
+## outrank a hovered (50) or lunging (60) card or they redraw over it.
+const RESULT_PANEL_Z: int = 100
+
 var _turn_label: Label
 var _intent_label: Label
 var _enemy_hp_label: Label
