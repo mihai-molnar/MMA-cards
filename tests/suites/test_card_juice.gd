@@ -158,8 +158,13 @@ func _run_in_tree_hover_probe() -> Dictionary:
 	var abs_path: String = ProjectSettings.globalize_path(probe_path)
 
 	var output: Array = []
+	# --quit-after prevents an infinite hang if the probe errors before quit(0) --
+	# any error before that point would leave the nested SceneTree idling forever,
+	# causing OS.execute to block forever and tests/run_tests.sh to hang. A hard
+	# backstop converts a hang into the "probe never reached completion" error
+	# that the parser already handles.
 	var exit_code: int = OS.execute(OS.get_executable_path(),
-		["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", abs_path],
+		["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", abs_path, "--quit-after", "600"],
 		output, true, false)
 	DirAccess.remove_absolute(abs_path)
 
