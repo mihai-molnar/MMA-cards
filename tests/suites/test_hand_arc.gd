@@ -71,11 +71,16 @@ func _test_empty_hand(t: TestRunner) -> void:
 	view.free()
 
 func _test_clear_of_end_turn_button(t: TestRunner) -> void:
-	# The End Turn button's left edge is at x=900; the fan must not reach it.
+	# The End Turn button's left edge is at x=940; the fan must not reach it.
+	# The rightmost card is rotated up to MAX_FAN_ANGLE_DEG about its
+	# bottom-centre pivot, so its true rightmost point -- not its
+	# axis-aligned rect edge -- is what has to clear the button. See
+	# HandView.rotated_right_edge.
 	var view: HandView = _hand_with([&"jab", &"straight", &"jab", &"block", &"straight"])
 	var rightmost: CardView = view.get_child(4) as CardView
-	var right_edge: float = rightmost.rest_position.x + CardView.CARD_SIZE.x
-	t.check(right_edge < 900.0, "the fan stays clear of the End Turn button")
+	var right_edge: float = HandView.rotated_right_edge(
+		rightmost.rest_position.x, rightmost.rest_rotation)
+	t.check(right_edge < 940.0, "the fan stays clear of the End Turn button")
 	view.free()
 
 func _test_clear_hover(t: TestRunner) -> void:
@@ -86,14 +91,16 @@ func _test_clear_hover(t: TestRunner) -> void:
 	t.check(not card.is_card_hovered(), "clear_hover drops every card back to rest")
 	view.free()
 
-## right_edge = 654 + 58 * (n - 1): clearance of the End Turn button (x=900)
-## holds only up to n=5 (886, 14px slack); n=6 would reach 944 and overlap
-## it -- which is exactly why HAND_SIZE's ceiling dropped from 6 to 5 when
-## the cards grew ~30% (see _test_hand_size_ceiling). Both invariants below
-## are asserted across every hand size the game can actually deal, not just
-## the five-card case above, so a future change to HAND_SIZE or the arc
-## constants trips a test instead of silently breaking End Turn or clipping
-## the bottom of the design space.
+## Rotation-aware clearance of the End Turn button (x=940): the rightmost
+## card's true corner (HandView.rotated_right_edge, which accounts for the
+## rotation about the card's bottom-centre pivot -- the raw rect edge
+## understates how far the card reaches) holds clear only up to n=5 (~901,
+## 39px slack); n=6 would reach ~951 and overlap it -- which is exactly why
+## HAND_SIZE's ceiling stays at 5 (see _test_hand_size_ceiling). Both
+## invariants below are asserted across every hand size the game can
+## actually deal, not just the five-card case above, so a future change to
+## HAND_SIZE or the arc constants trips a test instead of silently breaking
+## End Turn or clipping the bottom of the design space.
 func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 	var pool: Array[StringName] = [
 		&"jab", &"straight", &"jab", &"block", &"straight"
@@ -104,8 +111,9 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 		t.check_eq(view.get_child_count(), n, "hand of %d builds %d cards" % [n, n])
 
 		var rightmost: CardView = view.get_child(n - 1) as CardView
-		var right_edge: float = rightmost.rest_position.x + CardView.CARD_SIZE.x
-		t.check(right_edge < 900.0,
+		var right_edge: float = HandView.rotated_right_edge(
+			rightmost.rest_position.x, rightmost.rest_rotation)
+		t.check(right_edge < 940.0,
 			"hand of %d clears the End Turn button (right edge %f)" % [n, right_edge])
 
 		# Regression guard for the bottom-clip fix: a card's rotated bottom
@@ -125,17 +133,17 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 ## arithmetic only holds through n=5. This turns that into a loud test
 ## failure instead.
 ##
-## The ceiling dropped from 6 to 5 when the cards grew ~30% (CARD_SIZE
-## 120x180 -> 156x234, CARD_STEP_X 86 -> 116): the wider step and wider card
-## push the n=6 right edge to 944, past the End Turn button at x=900, where
-## the old, smaller cards cleared it at n=6 with 14px to spare.
+## This bound is rotation-aware: it is measured against
+## HandView.rotated_right_edge, the rightmost card's true corner once its
+## rotation about its bottom-centre pivot is accounted for, not the
+## axis-aligned rect edge a prior version of this check used (that version
+## understated the true corner by ~47px at the fan's maximum tilt, which is
+## how a card came to overlap the End Turn button despite "passing").
 ##
-## Also note: like _test_layout_invariants_across_hand_sizes, this still only
-## covers the ceiling implied by that test's unrotated bounding-box check --
-## it was already a slight overestimate of clearance before the card size
-## changed, since a fanned card's true rotated corner sits marginally further
-## right than its axis-aligned bounding box. Not reworked here to stay
-## rotation-aware; keeping this change minimal.
+## At CARD_STEP_X = 100 (dropped from 116 for the same reason -- see
+## HandView.CARD_STEP_X) and END_TURN_AT.x = 940 (moved out from 900), n=5's
+## true right edge is ~901, 39px clear; n=6 would reach ~951, past the
+## button. Hence the ceiling stays at 5.
 func _test_hand_size_ceiling(t: TestRunner) -> void:
 	t.check(BattleConfig.HAND_SIZE <= 5,
 		"HAND_SIZE must stay <= 5 -- the fan only clears the End Turn button up to 5 cards")

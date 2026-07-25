@@ -26,7 +26,16 @@ const RESULT_PANEL_Z: int = 100
 
 const PLAYER_PANEL_AT: Vector2 = Vector2(60, 90)
 const ENEMY_PANEL_AT: Vector2 = Vector2(832, 90)
-const END_TURN_AT: Vector2 = Vector2(900, 520)
+## x=940, not 900: the fanned hand's rightmost card reaches this far even
+## though its axis-aligned rect does not, because the card is rotated up to
+## MAX_FAN_ANGLE_DEG about its bottom-centre pivot (see
+## HandView.rotated_right_edge). At HandView.CARD_STEP_X = 100 the true
+## corner of the rightmost card in a 5-card hand sits at ~901, so x=900 left
+## it overlapping this button by about a pixel and the AP label above it.
+## x=940 clears that true corner by ~39px. END_TURN_SIZE.x = 180 puts the
+## button's right edge at 1120 in the 1152-wide design space -- a 32px
+## margin.
+const END_TURN_AT: Vector2 = Vector2(940, 520)
 const END_TURN_SIZE: Vector2 = Vector2(180, 48)
 
 var _turn_label: Label
@@ -73,7 +82,7 @@ func _build() -> void:
 
 	_pile_label = _add_label("", Vector2(24, 560), 14)
 
-	_ap_label = _add_label("", Vector2(900, 470), 24)
+	_ap_label = _add_label("", Vector2(940, 470), 24)
 
 	var end_turn := Button.new()
 	end_turn.text = "END TURN"

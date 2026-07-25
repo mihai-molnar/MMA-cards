@@ -17,11 +17,22 @@ const FAN_ARCH_HEIGHT: float = 20.0
 ## body spans ~852 of 1024px width, i.e. ~83.2% (x[85..937] for card_jab.png,
 ## similar for the other two). At CARD_SIZE.x = 156 (cards were enlarged 30%
 ## from an original 120px rect, keeping the 2:3 aspect) that is a visible
-## body of 156 * (852.0 / 1024.0) ≈ 129.8px. This value overlaps those
-## visible bodies by 129.8 - 116 ≈ 13.8px -- matching the ~13.8px overlap the
-## fan had at the original size (86px step against a 99.8px visible body at
-## CARD_SIZE.x = 120), so the fan reads the same regardless of card size.
-const CARD_STEP_X: float = 116.0
+## body of 156 * (852.0 / 1024.0) ≈ 129.8px.
+##
+## Was 116 (i.e. ~13.8px overlap of the visible body). Dropped to 100 because
+## the unrotated-box clearance check that justified 116 was wrong: cards
+## rotate up to MAX_FAN_ANGLE_DEG about their bottom-centre pivot
+## (CardView.pivot_offset), and the rotated top-outer corner reaches well
+## past the axis-aligned rect -- ~203px right of the rect's left edge at
+## 12deg on a 156x234 card, not 156px. At step 116 that true corner clears
+## the End Turn button's old position (x=900) by only a hair while the
+## unrotated check reported 14px of slack that didn't exist; see
+## rotated_right_edge() below and test_hand_arc.gd. At step 100 the true
+## corner sits at ~901, and battle_hud.gd's controls moved out to x=940 to
+## give it real room. This overlaps the visible body by 129.8 - 100 ≈ 29.8px
+## (~77% of each card still shown), heavier than the old fan but still
+## legible.
+const CARD_STEP_X: float = 100.0
 const HAND_CENTRE_X: float = 576.0
 ## Bottom-most point of a tilted outer card must stay inside the 648-tall
 ## design space: HAND_BASE_Y + CARD_SIZE.y + (CARD_SIZE.x / 2) *
@@ -91,6 +102,31 @@ func layout_cards() -> void:
 			Vector2(centre_x - CardView.CARD_SIZE.x / 2.0, HAND_BASE_Y - arch),
 			deg_to_rad(t * MAX_FAN_ANGLE_DEG),
 			index)
+
+## True rightmost point of a card whose unrotated rect's left edge sits at
+## `rect_x`, once rotated by `rotation_rad` about its bottom-centre pivot
+## (see CardView.pivot_offset). `rect_x + CARD_SIZE.x` -- the axis-aligned
+## box edge every clearance check used to use -- understates this: the top
+## outer corner swings past the box as the card tilts. At MAX_FAN_ANGLE_DEG
+## (12deg) on a 156x234 card the true corner sits ~47px right of the box
+## edge, which is how the rightmost card in the fan came to overlap the AP
+## label and End Turn button despite every existing check reporting
+## clearance. Any clearance assertion against the fan's outer edge must use
+## this, not the raw rect.
+static func rotated_right_edge(rect_x: float, rotation_rad: float) -> float:
+	var half_width: float = CardView.CARD_SIZE.x / 2.0
+	var pivot_x: float = rect_x + half_width
+	var corner_offset: float = half_width * cos(rotation_rad) + CardView.CARD_SIZE.y * sin(rotation_rad)
+	return pivot_x + corner_offset
+
+## Mirror of rotated_right_edge() for the leftmost card, which rotates the
+## other way (negative rotation_rad) and so swings its top-outer corner past
+## the box to the *left* by the same magnitude.
+static func rotated_left_edge(rect_x: float, rotation_rad: float) -> float:
+	var half_width: float = CardView.CARD_SIZE.x / 2.0
+	var pivot_x: float = rect_x + half_width
+	var corner_offset: float = half_width * cos(rotation_rad) - CardView.CARD_SIZE.y * sin(rotation_rad)
+	return pivot_x - corner_offset
 
 ## Updates affordability dimming and combo highlights without rebuilding.
 func refresh_states(battle: BattleState) -> void:
