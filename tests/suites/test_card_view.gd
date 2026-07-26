@@ -6,15 +6,16 @@ func run(t: TestRunner) -> void:
 	_test_card_view_text(t)
 	_test_affordability(t)
 	_test_hand_view_rebuild(t)
-	_test_art_found_hides_labels_and_shows_texture(t)
-	_test_art_missing_keeps_fallback_appearance(t)
+	_test_frame_and_illustration_resolve(t)
+	_test_badge_value_derives_from_effects(t)
+	_test_missing_illustration_keeps_a_complete_frame(t)
+	_test_zones_are_laid_out_from_the_template(t)
 	_test_combo_armed_idempotent(t)
-	_test_combo_armed_idempotent_with_art(t)
 
-## A CardData with no matching res://assets/cards/card_<id>.png -- exercises
-## CardView's fallback path the same way a freshly authored card (.tres
-## written, art not painted yet) would on day one.
-func _no_art_card() -> CardData:
+## A CardData with no matching res://assets/illustrations/<id>.png -- exactly
+## what a freshly authored card looks like on day one, .tres written and art
+## not painted yet.
+func _no_illustration_card() -> CardData:
 	var card := CardData.new()
 	card.id = &"no_such_card_id"
 	card.display_name = "TEST CARD"
@@ -30,12 +31,8 @@ func _test_card_view_text(t: TestRunner) -> void:
 	t.check(text.contains("JAB"), "the card shows its name")
 	t.check(text.contains("1 AP"), "the card shows its cost")
 	t.check(text.contains("6"), "the card shows its damage")
+	t.check(text.contains("Deal 6 damage."), "the card shows its rules text")
 	view.free()
-
-	var blocker: CardData = CardLibrary.load_card(&"block")
-	var block_view: CardView = CardView.create(blocker)
-	t.check(block_view.debug_text().contains("5"), "the block card shows its guard value")
-	block_view.free()
 
 func _test_affordability(t: TestRunner) -> void:
 	var card: CardData = CardLibrary.load_card(&"straight")
@@ -76,76 +73,98 @@ func _test_hand_view_rebuild(t: TestRunner) -> void:
 
 	hand.free()
 
-## jab has real art (res://assets/cards/card_jab.png), so this exercises the
-## "found" branch of _apply_art(): the texture is set and visible, and the
-## name/cost/rules-text labels plus the coloured background and border --
-## all baked into or superseded by the art -- are hidden. debug_text() must
-## still report the label text (per its own contract), even though nothing
-## on screen shows it.
-func _test_art_found_hides_labels_and_shows_texture(t: TestRunner) -> void:
-	var card: CardData = CardLibrary.load_card(&"jab")
-	var view: CardView = CardView.create(card)
+## Both layers come from CardArt, and they come from different lookups: the
+## illustration by card id, the frame by tag-chosen variant. A card that got
+## its frame by id would break the moment a card shipped without one.
+func _test_frame_and_illustration_resolve(t: TestRunner) -> void:
+	var jab: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	t.check_eq(jab._frame.texture, CardArt.frame_for(CardTemplate.ATTACK),
+		"an attack card wears the attack frame")
+	t.check_eq(jab._illustration.texture, CardArt.illustration_for(&"jab"),
+		"the illustration is the one CardArt resolves for this card's id")
+	jab.free()
 
-	t.check(view._art.texture != null, "a card with matching art gets a texture")
-	t.check_eq(view._art.texture, CardArt.texture_for(&"jab"),
-		"the view's texture is the one CardArt resolves for this card's id")
-	t.check(view._art.visible, "the art node is shown")
-	t.check(not view._name_label.visible, "the name label is hidden -- it is baked into the art")
-	t.check(not view._cost_label.visible, "the cost label is hidden -- it is baked into the art")
-	t.check(not view._text_label.visible, "the rules-text label is hidden -- it is baked into the art")
-	t.check(not view._background.visible, "the coloured background is hidden behind the art")
-	t.check(not view._border.visible, "the synthetic border is hidden -- the art has its own gold frame")
+	var blocker: CardView = CardView.create(CardLibrary.load_card(&"block"))
+	t.check_eq(blocker._frame.texture, CardArt.frame_for(CardTemplate.DEFENSE),
+		"a defense-tagged card wears the defense frame")
+	blocker.free()
 
-	var text: String = view.debug_text()
-	t.check(text.contains("JAB") and text.contains("1 AP") and text.contains("6"),
-		"debug_text() still reports real label text even though the labels are hidden")
+## The badge number is derived, never stored. This is the check that would
+## catch a future regression back to a hardcoded field, and the reason the
+## card can no longer print a number the rules disagree with.
+func _test_badge_value_derives_from_effects(t: TestRunner) -> void:
+	var jab: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	t.check_eq(jab._value_label.text, str(BattleConfig.JAB_DAMAGE),
+		"an attack card's badge shows its damage")
+	t.check_eq(jab._cost_label.text, str(BattleConfig.JAB_COST),
+		"the cost badge shows the card's AP cost as a bare number")
+	jab.free()
+
+	var blocker: CardView = CardView.create(CardLibrary.load_card(&"block"))
+	t.check_eq(blocker._value_label.text, str(BattleConfig.BLOCK_GUARD),
+		"a defense card's badge shows its guard, not its (zero) damage")
+	blocker.free()
+
+	# Neither damage nor guard: an empty badge beats a misleading "0".
+	var view: CardView = CardView.create(_no_illustration_card())
+	t.check_eq(view._value_label.text, "",
+		"a card with no damage and no guard shows an empty badge rather than 0")
 	view.free()
 
-## A card with no matching PNG must keep exactly today's appearance: this is
-## a real fallback, not defensive padding -- it is what a freshly authored
-## card looks like before its art exists.
-func _test_art_missing_keeps_fallback_appearance(t: TestRunner) -> void:
-	var view: CardView = CardView.create(_no_art_card())
+## The fallback is now an empty WINDOW inside a complete frame, not a coloured
+## rectangle. Every card always has a frame -- it is chosen by tag, not looked
+## up by id -- so the old coloured-box branch became unreachable and was
+## removed rather than left as dead code.
+func _test_missing_illustration_keeps_a_complete_frame(t: TestRunner) -> void:
+	var view: CardView = CardView.create(_no_illustration_card())
 
-	t.check(view._art.texture == null, "a card with no matching art gets no texture")
-	t.check(not view._art.visible, "the art node stays hidden")
-	t.check(view._name_label.visible, "the name label stays shown")
-	t.check(view._cost_label.visible, "the cost label stays shown")
-	t.check(view._text_label.visible, "the rules-text label stays shown")
-	t.check(view._background.visible, "the coloured background stays shown")
-	t.check(view._border.visible, "the synthetic border stays shown")
+	t.check(view._illustration.texture == null, "a card with no illustration gets no illustration texture")
+	t.check(view._frame.texture != null, "it still gets a frame")
+	t.check(view._title_label.visible, "the title still renders")
+	t.check(view._cost_label.visible, "the cost still renders")
+	t.check_eq(view._title_label.text, "TEST CARD", "the title is the card's display name")
 	view.free()
 
-## Uses the synthetic no-art card so this exercises the _background lerp
-## branch of set_combo_armed() specifically (a jab CardView would take the
-## art-modulate branch instead, tested separately below).
+## Positions come from CardTemplate, and the two variants must actually differ
+## -- if both frames got the attack geometry the defense number would sit off
+## the shield, which draws fine and reads wrong.
+func _test_zones_are_laid_out_from_the_template(t: TestRunner) -> void:
+	var jab: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	var blocker: CardView = CardView.create(CardLibrary.load_card(&"block"))
+
+	var expected_window: Rect2 = CardTemplate.to_pixels(
+		CardTemplate.WINDOW_ZONE, CardView.CARD_SIZE)
+	t.check(jab._illustration.position.is_equal_approx(expected_window.position),
+		"the illustration is positioned at the template's window zone")
+
+	t.check(jab._value_label.get_rect().get_center().x
+			> blocker._value_label.get_rect().get_center().x,
+		"the attack badge sits right of the burst while the defense badge is centred in the shield")
+	t.check(jab._cost_label.position.x != blocker._cost_label.position.x,
+		"the two frames' cost circles are in different places and the labels follow")
+
+	jab.free()
+	blocker.free()
+
+## Guards the exact regression that shipped once: lerping from the LIVE
+## modulate instead of a fixed base drifts the tint further gold on every
+## refresh, and refresh_states() runs on every model event.
 func _test_combo_armed_idempotent(t: TestRunner) -> void:
-	var view: CardView = CardView.create(_no_art_card())
+	var view: CardView = CardView.create(CardLibrary.load_card(&"straight"))
 
 	view.set_combo_armed(true)
-	var once: Color = view._background.color
-
-	view.set_combo_armed(true)
-	view.set_combo_armed(true)
-	t.check_eq(view._background.color, once, "calling set_combo_armed(true) three times matches calling it once")
-	view.free()
-
-## jab has real art, so set_combo_armed() here must take the _art.modulate
-## branch, not the (hidden) background. Same regression this guards against
-## as the fallback version above: a lerp from the *current* modulate instead
-## of a fixed base would drift the tint further gold on every refresh.
-func _test_combo_armed_idempotent_with_art(t: TestRunner) -> void:
-	var card: CardData = CardLibrary.load_card(&"jab")
-	var view: CardView = CardView.create(card)
-
-	view.set_combo_armed(true)
-	var once: Color = view._art.modulate
+	var once: Color = view._frame.modulate
 
 	view.set_combo_armed(true)
 	view.set_combo_armed(true)
-	t.check_eq(view._art.modulate, once, "calling set_combo_armed(true) three times matches calling it once")
-	t.check(view._art.modulate != Color.WHITE, "the art is actually tinted while combo-armed")
+	t.check_eq(view._frame.modulate, once,
+		"calling set_combo_armed(true) three times matches calling it once")
+	t.check(view._frame.modulate != Color.WHITE, "the frame is actually tinted while combo-armed")
 
 	view.set_combo_armed(false)
-	t.check_eq(view._art.modulate, Color.WHITE, "un-arming returns the art to its untinted colour")
+	t.check_eq(view._frame.modulate, Color.WHITE, "un-arming returns the frame to its untinted colour")
+
+	# The artwork itself must never be tinted -- the gold belongs on the gold
+	# frame, and tinting the illustration would misrepresent the art.
+	t.check_eq(view._illustration.modulate, Color.WHITE, "the illustration is never tinted")
 	view.free()

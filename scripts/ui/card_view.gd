@@ -1,21 +1,19 @@
 class_name CardView
 extends Button
 
-## One card, rendered as a labelled rectangle. Knows how to draw a card and
+## One card, composed at runtime: an illustration, a frame chosen by the card's
+## tags, and four text zones read from CardData. Knows how to draw a card and
 ## report clicks; knows nothing about whether playing it is legal.
+##
+## Nothing about the face is baked into an image, so a balance change is
+## reflected on the card the moment the .tres is regenerated. Geometry and
+## typography live in CardTemplate.
 
 signal card_selected(view: CardView)
 
 const CARD_SIZE: Vector2 = Vector2(200, 300)
-const ATTACK_COLOR: Color = Color(0.32, 0.16, 0.16)
-const DEFENSE_COLOR: Color = Color(0.16, 0.20, 0.32)
 const COMBO_BORDER_COLOR: Color = Color(1.0, 0.80, 0.20)
 const UNAFFORDABLE_ALPHA: float = 0.45
-
-## Overlapping same-coloured cards otherwise fuse into one shape; this border
-## reads as the gap between fanned cards because it matches the page background.
-const BORDER_WIDTH: float = 3.0
-const BORDER_COLOR: Color = Color(0.05, 0.05, 0.07)
 
 const HOVER_Z: int = 50
 const LUNGE_Z: int = 60
@@ -52,16 +50,13 @@ var _tilt_rotation: float = 0.0
 var _elapsed: float = 0.0
 var _lunging: bool = false
 
-var _border: ColorRect
-var _background: ColorRect
-var _art: TextureRect
-var _name_label: Label
+## Bottom to top: illustration, frame, then the four text zones. See _build().
+var _illustration: TextureRect
+var _frame: TextureRect
+var _title_label: Label
+var _value_label: Label
+var _rules_label: Label
 var _cost_label: Label
-var _text_label: Label
-
-## True once configure() has found real art for the current card. Set by
-## _apply_art(); read by set_combo_armed() to pick which layer to tint.
-var _has_art: bool = false
 
 static func create(p_card: CardData) -> CardView:
 	var view := CardView.new()
@@ -138,65 +133,55 @@ func debug_is_animating() -> bool:
 	return _tween != null and _tween.is_valid() and _tween.is_running()
 
 func _build() -> void:
-	_border = ColorRect.new()
-	_border.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_border.color = BORDER_COLOR
-	_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_border)
+	# Bottom to top. The frame is drawn OVER the illustration, not under it:
+	# the illustration fills a plain rectangle and the frame's own window is
+	# what crops it to shape, so a new illustration needs no matching cut-out.
+	_illustration = TextureRect.new()
+	_illustration.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_illustration.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_illustration.clip_contents = true
+	_illustration.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_illustration)
 
-	_background = ColorRect.new()
-	_background.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_background.offset_left = BORDER_WIDTH
-	_background.offset_top = BORDER_WIDTH
-	_background.offset_right = -BORDER_WIDTH
-	_background.offset_bottom = -BORDER_WIDTH
-	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_background)
+	# STRETCH_SCALE, not KEEP_ASPECT: the frames are 1024x1536, exactly
+	# CARD_SIZE's 2:3, so scaling is uniform anyway -- and being explicit means
+	# a future frame authored at the wrong aspect distorts visibly instead of
+	# quietly letterboxing itself out of alignment with the zones.
+	_frame = TextureRect.new()
+	_frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_frame.stretch_mode = TextureRect.STRETCH_SCALE
+	_frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_frame)
 
-	# Filled in by configure() when CardArt.texture_for() finds a matching
-	# PNG. KEEP_ASPECT_COVERED plus EXPAND_IGNORE_SIZE fills the card rect
-	# without letting the texture's own size push CardView bigger than
-	# CARD_SIZE -- clip_contents (set in _init) crops any overflow, though
-	# the art's 2:3 aspect already matches CARD_SIZE's, so there is none.
-	_art = TextureRect.new()
-	_art.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_art.visible = false
-	add_child(_art)
+	_title_label = _make_label(CardTemplate.TITLE_SIZE, CardTemplate.TITLE_COLOR, true)
+	add_child(_title_label)
 
-	var column := VBoxContainer.new()
-	column.set_anchors_preset(Control.PRESET_FULL_RECT)
-	column.offset_left = 8
-	column.offset_top = 8
-	column.offset_right = -8
-	column.offset_bottom = -8
-	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(column)
+	_value_label = _make_label(CardTemplate.VALUE_SIZE, CardTemplate.VALUE_COLOR, true)
+	add_child(_value_label)
 
-	_name_label = _make_label(18)
-	column.add_child(_name_label)
+	_cost_label = _make_label(CardTemplate.COST_SIZE, CardTemplate.COST_COLOR, true)
+	add_child(_cost_label)
 
-	_cost_label = _make_label(14)
-	_cost_label.modulate = Color(0.85, 0.85, 0.60)
-	column.add_child(_cost_label)
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_child(spacer)
-
-	_text_label = _make_label(13)
-	_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(_text_label)
+	# Dark ink on the parchment: no outline, and the only wrapping label.
+	_rules_label = _make_label(CardTemplate.RULES_SIZE, CardTemplate.RULES_COLOR, false)
+	_rules_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rules_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	add_child(_rules_label)
 
 	pressed.connect(_on_pressed)
 
-func _make_label(font_size: int) -> Label:
+func _make_label(font_size: int, color: Color, outlined: bool) -> Label:
 	var label := Label.new()
 	label.add_theme_font_size_override("font_size", font_size)
+	if CardTemplate.FONT != null:
+		label.add_theme_font_override("font", CardTemplate.FONT)
+	label.add_theme_color_override("font_color", color)
+	if outlined:
+		label.add_theme_constant_override("outline_size", CardTemplate.OUTLINE_SIZE)
+		label.add_theme_color_override("font_outline_color", CardTemplate.OUTLINE_COLOR)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
 
@@ -204,33 +189,64 @@ func configure(p_card: CardData) -> void:
 	card = p_card
 	if card == null:
 		return
-	# Labels are always populated, even when art hides them -- debug_text()
-	# must keep reporting something real either way (see its own doc comment).
-	_name_label.text = card.display_name
-	_cost_label.text = "%d AP" % card.cost
-	_text_label.text = _rules_text()
-	_background.color = DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
-	_apply_art()
+	var variant: StringName = CardTemplate.variant_for(card)
+	_frame.texture = CardArt.frame_for(variant)
+	_illustration.texture = CardArt.illustration_for(card.id)
+	_title_label.text = card.display_name
+	_cost_label.text = str(card.cost)
+	_value_label.text = _badge_value_text(variant)
+	_rules_label.text = _rules_text()
+	_layout_zones(variant)
 	set_combo_armed(false)
 
-## Looks up art for the current card and switches appearance accordingly.
-## When art exists: shows it filling the rect and hides the name, cost and
-## rules-text labels plus the coloured background and border -- all four
-## are either baked into the image or replaced by its own gold frame, and
-## would otherwise double up or peek out from behind the art.
-## When it does not: leaves the original rectangle-and-labels look exactly
-## as it was, which keeps this a real (visibly different) fallback rather
-## than a silent no-op.
-func _apply_art() -> void:
-	var texture: Texture2D = CardArt.texture_for(card.id)
-	_has_art = texture != null
-	_art.texture = texture
-	_art.visible = _has_art
-	_border.visible = not _has_art
-	_background.visible = not _has_art
-	_name_label.visible = not _has_art
-	_cost_label.visible = not _has_art
-	_text_label.visible = not _has_art
+## The badge number is DERIVED from the card's effects, never stored: a card
+## wearing the defense frame shows the guard it grants, everything else the
+## damage it deals. This is the whole reason a card can no longer print a
+## value the rules disagree with -- there is no second copy of the number to
+## fall out of date.
+##
+## A card with neither shows nothing rather than "0", which would read as a
+## card that deals zero damage instead of a card that is not about damage.
+func _badge_value_text(variant: StringName) -> String:
+	var value: int = card.total_guard() if variant == CardTemplate.DEFENSE \
+		else card.total_base_damage()
+	return "" if value == 0 else str(value)
+
+## Positions every layer from the template's normalized zones. Called from
+## configure() rather than _build() because the value and cost zones depend on
+## which frame the card ended up wearing.
+##
+## These write position/size on CHILD controls directly. That does not violate
+## the compose-never-assign rule: _process composes position/rotation/scale of
+## the CardView itself, and never touches its children's rects.
+func _layout_zones(variant: StringName) -> void:
+	_place(_illustration, CardTemplate.to_pixels(CardTemplate.WINDOW_ZONE, CARD_SIZE))
+	_place(_title_label, CardTemplate.to_pixels(CardTemplate.TITLE_ZONE, CARD_SIZE))
+	_place(_rules_label, CardTemplate.to_pixels(CardTemplate.RULES_ZONE, CARD_SIZE))
+	_place_centred(_value_label,
+		CardTemplate.VALUE_CENTRE[variant], CardTemplate.VALUE_BOX[variant])
+	_place_centred(_cost_label,
+		CardTemplate.COST_CENTRE[variant], CardTemplate.COST_BOX)
+
+func _place(control: Control, rect: Rect2) -> void:
+	control.position = rect.position
+	control.size = rect.size
+
+## Centres a control on a normalized point. Defers the centring arithmetic to
+## CardTemplate.centred_pixels() so there is exactly one copy of it -- the
+## bounds tests use the same function, and a second copy here would be free to
+## drift away from the one under test.
+##
+## Reads `size` BACK after assigning it, because Control clamps size up to its
+## minimum: a two-digit number at font 22 is wider than the attack frame's 20px
+## badge gap, so the label silently becomes bigger than the box it was given.
+## Positioning from the requested box instead of the actual size would then
+## push every two-digit value half a box off its icon -- and it would look
+## almost right, which is the worst kind of wrong.
+func _place_centred(control: Control, centre: Vector2, box: Vector2) -> void:
+	var rect: Rect2 = CardTemplate.centred_pixels(centre, box, CARD_SIZE)
+	control.size = rect.size
+	control.position = rect.get_center() - control.size / 2.0
 
 func _rules_text() -> String:
 	if not card.rules_text.is_empty():
@@ -246,39 +262,28 @@ func set_affordable(value: bool) -> void:
 	disabled = not value
 	modulate.a = 1.0 if value else UNAFFORDABLE_ALPHA
 
-## Base (non-armed) background color for the current card.
-func _base_color() -> Color:
-	if card == null:
-		return ATTACK_COLOR
-	return DEFENSE_COLOR if card.has_tag(&"defense") else ATTACK_COLOR
-
-## Idempotent: always computed from a fixed base value (the background's
-## base color, or Color.WHITE for the art) -- never lerped from whatever the
-## target is currently holding -- so calling this N times with the same
-## value equals calling it once. refresh_states() calls this once per model
-## event; lerping from the live value is exactly the bug ("progressive gold
-## drift on repeated refreshes") that shipped once already and must not
-## return (see test_card_view.gd's idempotency checks).
+## Idempotent: always computed from a fixed base (Color.WHITE), never lerped
+## from whatever modulate currently holds. refresh_states() calls this once per
+## model event, and lerping from the live value is exactly the bug that shipped
+## once already -- the tint drifted further gold on every refresh.
 ##
-## With art, the coloured background is hidden (see _apply_art), so the
-## highlight retargets to a modulate tint on the art itself instead. Tinting
-## modulate's RGB only (alpha stays 1.0) keeps this composing correctly with
+## The FRAME is tinted, not the illustration: the gold belongs on the gold
+## frame, and tinting the artwork would misrepresent what it depicts. Tinting
+## modulate's RGB only (alpha stays 1.0) keeps this composing with
 ## set_affordable(false), which dims via modulate.a on the whole Button --
-## Godot multiplies a child's modulate into its parent's when drawing, so
-## the two effects combine automatically rather than fighting over one value.
+## Godot multiplies a child's modulate into its parent's when drawing, so the
+## two combine automatically rather than fighting over one value.
 func set_combo_armed(value: bool) -> void:
 	if value:
 		add_theme_constant_override("outline_size", 3)
 	else:
 		remove_theme_constant_override("outline_size")
-	if _has_art:
-		_art.modulate = Color.WHITE.lerp(COMBO_BORDER_COLOR, 0.25) if value else Color.WHITE
-	else:
-		_background.color = _base_color().lerp(COMBO_BORDER_COLOR, 0.25) if value else _base_color()
+	_frame.modulate = Color.WHITE.lerp(COMBO_BORDER_COLOR, 0.25) if value else Color.WHITE
 
 ## Everything the card displays, for tests.
 func debug_text() -> String:
-	return "%s | %s | %s" % [_name_label.text, _cost_label.text, _text_label.text]
+	return "%s | %s AP | %s | %s" % [
+		_title_label.text, _cost_label.text, _value_label.text, _rules_label.text]
 
 func _on_pressed() -> void:
 	card_selected.emit(self)
