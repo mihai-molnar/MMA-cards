@@ -1,7 +1,9 @@
 extends SceneTree
 
 ## Renders the three cards exactly as CardView draws them and writes a
-## screenshot, at 1x and at 3x.
+## screenshot: a row of all three, plus the same Straight un-armed and
+## combo-armed side by side, laid out next to each other so both groups fit
+## on the project's 1152x648 base canvas.
 ##
 ## Card-face layout is geometry no test can check. An assertion that
 ## _value_label.position equals CardTemplate's zone proves the code did what
@@ -9,9 +11,17 @@ extends SceneTree
 ## has been burned by that exact class of green-test-over-broken-visual
 ## before (see CLAUDE.md, "Verifying animation -- tests cannot see motion").
 ##
-## The 1x row is what the player actually sees and is the row that decides
-## whether the layout is right. The 3x row is only for finding WHICH edge is
-## off once the 1x row looks wrong.
+## There used to be a second copy of the three-card row scaled 3x underneath,
+## meant to zoom in on whichever edge looked off. It never fit: even before a
+## second row (the combo pair) was added below it, the 3x row's own height
+## alone (900px) put it well past the 648-tall canvas, so root.get_texture()
+## never actually contained it -- the capture silently cropped it away every
+## time the tool ran. It was deleted rather than resized, because a second
+## row is redundant here: project.godot sets window/stretch/mode to
+## "canvas_items" with a 2560x1440 window over a 1152x648 canvas, so this
+## capture is already rendered at 2560.0 / 1152.0 = 2.222x -- a 200x300 card
+## lands as roughly 444x667 real pixels in the written PNG. That is the
+## zoomed-in detail the deleted row existed to provide.
 ##
 ## Run NON-headless -- get_texture() needs a real rendering context:
 ##   "/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" \
@@ -20,7 +30,6 @@ extends SceneTree
 const OUTPUT: String = "/tmp/card-faces.png"
 const CARD_IDS: Array[StringName] = [&"jab", &"straight", &"block"]
 const GAP: float = 20.0
-const ZOOM: float = 3.0
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -31,9 +40,18 @@ func _run() -> void:
 	background.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(background)
 
-	_add_row(Vector2(GAP, GAP), 1.0)
-	_add_combo_row(Vector2(GAP, GAP * 2.0 + CardView.CARD_SIZE.y))
-	_add_row(Vector2(GAP, GAP * 3.0 + CardView.CARD_SIZE.y * 2.0), ZOOM)
+	# Both groups sit on one row, side by side, rather than stacked -- the
+	# three-card row alone is 640px of content (3 cards + 2 internal gaps),
+	# so stacking a second group below it wastes 648px of canvas height that
+	# is otherwise unused. The row of three starts at x=GAP and spans 640px
+	# of content, ending at x=660; the combo pair starts one more GAP past
+	# that, at x=680, and spans 420px of content (2 cards + 1 internal gap)
+	# to x=1100 -- comfortably inside the 1152-wide canvas with 52px to
+	# spare, and both rows sit at y=GAP, well clear of the 648-tall canvas
+	# at a 300px card height.
+	var row_width: float = CardView.CARD_SIZE.x * 3.0 + GAP * 2.0
+	_add_row(Vector2(GAP, GAP))
+	_add_combo_row(Vector2(GAP + row_width + GAP, GAP))
 
 	# Let the tree lay out and draw before reading the viewport back.
 	for _i: int in range(10):
@@ -69,10 +87,9 @@ func _add_combo_row(origin: Vector2) -> void:
 		view.target_position = Vector2(i * (CardView.CARD_SIZE.x + GAP), 0.0)
 		row.add_child(view)
 
-func _add_row(origin: Vector2, zoom: float) -> void:
+func _add_row(origin: Vector2) -> void:
 	var row := Control.new()
 	row.position = origin
-	row.scale = Vector2(zoom, zoom)
 	root.add_child(row)
 
 	var x: float = 0.0

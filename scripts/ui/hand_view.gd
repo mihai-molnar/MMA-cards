@@ -11,19 +11,22 @@ const MAX_FAN_ANGLE_DEG: float = 12.0
 const FAN_ARCH_HEIGHT: float = 20.0
 ## Less than CARD_SIZE.x, so cards overlap slightly like a real fan.
 ##
-## Chosen from the art's own margins, not CARD_SIZE.x: the card images carry
-## a wide transparent glow border, so the *visible* card body is narrower
-## than the CardView rect. Measured across all three source images the solid
-## body spans ~852 of 1024px width, i.e. ~83.2% (x[85..937] on the original,
-## since-retired pre-composed card art; similar for the other two). At
-## CARD_SIZE.x = 200 (the reflow that made
-## room for larger cards -- see CardView.CARD_SIZE) that is a visible body of
-## 200 * (852.0 / 1024.0) ≈ 166.4px.
+## Chosen from the art's own margins, not CARD_SIZE.x: the card frame images
+## carry a wide transparent glow border, so the *visible* card body is
+## narrower than the CardView rect. Measured on the current frame art
+## (assets/frames/attack.png and defense.png, which replaced the old
+## pre-composed card faces) the opaque body spans x[62..962) of 1024px width
+## on both frames -- ~87.9%, not the ~83.2% measured on the now-deleted
+## pre-composed art. At CARD_SIZE.x = 200 (the reflow that made room for
+## larger cards -- see CardView.CARD_SIZE) that is a visible body of
+## 200 * (900.0 / 1024.0) ≈ 175.8px, not the previously documented 166.4px.
 ##
-## Raised from 100 to 140 in the same reflow, keeping proportionally similar
-## overlap: 166.4 - 140 ≈ 26.4px (~16% of the visible body, close to the old
-## step's ~23% at the smaller card size). The rotation-aware clearance this
-## depends on is documented at rotated_right_edge() below and re-verified in
+## CARD_STEP_X is left at 140 here rather than retuned to match: no
+## clearance test breaks at the current value, and retuning fan geometry is
+## out of scope. At the new, wider body that leaves an overlap of
+## 175.8 - 140 ≈ 35.8px (~20% of the visible body), not the ~16% recorded
+## against the old art. The rotation-aware clearance this depends on is
+## documented at rotated_right_edge() below and re-verified in
 ## BattleHud.END_TURN_AT's own doc comment -- at CARD_STEP_X = 140 the
 ## rightmost card's true right edge crosses END_TURN_AT.y (570) at x ≈ 967,
 ## 18px clear of the button's new left edge (985).

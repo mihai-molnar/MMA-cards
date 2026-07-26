@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `477 checks, 0 failures` / `PASS`.
+on a clean tree ends with `528 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -139,7 +139,11 @@ reaches further in than the cost circle does (the circle's own left edge is
 `.697` on defense, `.722` on attack — never the binding constraint).
 `RULES_SIZE` is `8`, chosen by rendering rather than arithmetic: nothing about
 it can be derived from the zone's dimensions alone. `test_card_template.gd`
-asserts the zone's clearance from the cost circle.
+guards this with two tests: `_test_rules_zone_clears_both_cost_badges` checks
+clearance from the plain cost circle (cheap, but the weaker constraint — see
+above), and `_test_rules_zone_fits_the_painted_parchment` samples the actual
+frame PNGs pixel by pixel for the corner ornament, which is the one that
+actually binds.
 
 **Card-face layout cannot be verified by tests.** An assertion that
 `_value_label.position` equals the template zone proves the code matches the
@@ -151,11 +155,15 @@ render:
   --script res://tools/capture_cards.gd
 ```
 
-writes `/tmp/card-faces.png` with all three cards at 1x and 3x
-(`tools/capture_cards.gd` also renders an armed/un-armed pair, to judge the
-combo tint below). Run it **non-headless** — `get_texture()` needs a rendering
-context. This is the static sibling of "Verifying animation" below, and it has
-the same shape: green tests, wrong picture.
+writes `/tmp/card-faces.png` with a row of all three cards plus an
+armed/un-armed Straight pair side by side (to judge the combo tint below), laid
+out to fit the project's 1152x648 base canvas. No extra zoom row is needed: at
+that canvas size, `window/stretch/mode="canvas_items"` over the 2560x1440
+window already renders the capture at 2560/1152 = 2.222x, so a 200x300 card
+lands as roughly 444x667 real pixels in the PNG. Run it **non-headless** —
+`get_texture()` needs a rendering context. This is the static sibling of
+"Verifying animation" below, and it has the same shape: green tests, wrong
+picture.
 
 A state indicator drawn on top of an element that already has that colour
 needs measuring, not eyeballing. `set_combo_armed()` tints the frame with
@@ -356,7 +364,7 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 477 headless checks. What is
+Playable single battle, fully art-directed, 528 headless checks. What is
 conspicuously still placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen

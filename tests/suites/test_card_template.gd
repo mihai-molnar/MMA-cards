@@ -47,8 +47,8 @@ func _test_zones_are_normalized(t: TestRunner) -> void:
 			"the %s value badge sits inside the card vertically" % variant)
 
 ## Measured from the template pixels: the cost circle is centred at x .788
-## (attack) and .763 (defense) with a radius of about .065, so its left edge
-## is .723 and .700.
+## (attack) and .763 (defense) with a radius of about .066, so its left edge
+## is .722 and .697.
 ##
 ## This is the WEAKER of two constraints. A render pass found the real
 ## binding limit is the frame's own bottom-right corner ornament (the cost
@@ -103,10 +103,11 @@ func _test_rules_zone_fits_the_painted_parchment(t: TestRunner) -> void:
 	# not a hard vector line -- so a highlight rim or shadow can dip a
 	# handful of pixels below the predicate right at the zone's own boundary
 	# without anything actually being unreadable there. The worst case
-	# measured on the committed RULES_ZONE is about 0.026 (defense frame,
-	# row 7 of 8). 0.03 covers that with a little headroom while staying far
-	# below the 0.145 the discrimination check below moves the boundary by --
-	# this tolerance forgives raster noise, not a genuinely widened zone.
+	# measured on the committed RULES_ZONE is about 0.0157 (defense frame,
+	# row 7 of 8, right edge). 0.03 covers that with a little headroom while
+	# staying far below the 0.145 the discrimination check below moves the
+	# boundary by -- this tolerance forgives raster noise, not a genuinely
+	# widened zone.
 	const EDGE_TOLERANCE: float = 0.03
 
 	for variant: StringName in [CardTemplate.ATTACK, CardTemplate.DEFENSE]:

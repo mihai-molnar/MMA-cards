@@ -11,6 +11,7 @@ func run(t: TestRunner) -> void:
 	_test_missing_illustration_keeps_a_complete_frame(t)
 	_test_zones_are_laid_out_from_the_template(t)
 	_test_combo_armed_idempotent(t)
+	_test_badge_falls_back_to_the_other_total_when_mistagged(t)
 
 ## A CardData with no matching res://assets/illustrations/<id>.png -- exactly
 ## what a freshly authored card looks like on day one, .tres written and art
@@ -145,6 +146,31 @@ func _test_zones_are_laid_out_from_the_template(t: TestRunner) -> void:
 
 	jab.free()
 	blocker.free()
+
+## The discriminating case _test_badge_value_derives_from_effects cannot cover:
+## its zero-badge fixture has no effects at all, so both totals are zero
+## regardless of the fallback. Here the card actually grants guard but was
+## never tagged `defense` -- the mistake CardTemplate.variant_for() has no way
+## to catch, since it reads the tag, not the effects. Before the fallback this
+## rendered an empty attack burst badge, silently hiding a real authoring
+## error; the fallback surfaces the guard number on the wrong frame instead.
+func _test_badge_falls_back_to_the_other_total_when_mistagged(t: TestRunner) -> void:
+	var card := CardData.new()
+	card.id = &"mistagged_guard_card"
+	card.display_name = "MISTAGGED"
+	card.cost = 1
+	var guard := GuardEffect.new()
+	guard.amount = 5
+	card.effects = [guard] as Array[CardEffect]
+	# Deliberately no `defense` tag, so variant_for() picks ATTACK.
+
+	t.check_eq(CardTemplate.variant_for(card), CardTemplate.ATTACK,
+		"a guard-granting card without the defense tag still wears the attack frame")
+
+	var view: CardView = CardView.create(card)
+	t.check_eq(view._value_label.text, "5",
+		"the badge falls back to the guard total instead of rendering empty")
+	view.free()
 
 ## Guards the exact regression that shipped once: lerping from the LIVE
 ## modulate instead of a fixed base drifts the tint further gold on every

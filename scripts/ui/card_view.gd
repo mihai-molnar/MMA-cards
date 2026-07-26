@@ -216,11 +216,23 @@ func configure(p_card: CardData) -> void:
 ## value the rules disagree with -- there is no second copy of the number to
 ## fall out of date.
 ##
+## The variant's own total is preferred, but a nonzero total on the OTHER
+## side falls back rather than being swallowed: a card that grants guard but
+## was never tagged `defense` (the tag that also drives HandView's play
+## anchor) would otherwise wear the attack frame, ask for total_base_damage(),
+## get zero, and render an empty burst badge -- silently hiding the authoring
+## mistake instead of surfacing it. With the fallback it shows the guard
+## number on the wrong frame, which looks oddly-framed rather than broken, and
+## is the kind of wrong a glance at the render actually catches.
+##
 ## A card with neither shows nothing rather than "0", which would read as a
 ## card that deals zero damage instead of a card that is not about damage.
 func _badge_value_text(variant: StringName) -> String:
-	var value: int = card.total_guard() if variant == CardTemplate.DEFENSE \
+	var own_total: int = card.total_guard() if variant == CardTemplate.DEFENSE \
 		else card.total_base_damage()
+	var other_total: int = card.total_base_damage() if variant == CardTemplate.DEFENSE \
+		else card.total_guard()
+	var value: int = own_total if own_total != 0 else other_total
 	return "" if value == 0 else str(value)
 
 ## Positions every layer from the template's normalized zones. Called from
@@ -285,10 +297,6 @@ func set_affordable(value: bool) -> void:
 ## Godot multiplies a child's modulate into its parent's when drawing, so the
 ## two combine automatically rather than fighting over one value.
 func set_combo_armed(value: bool) -> void:
-	if value:
-		add_theme_constant_override("outline_size", 3)
-	else:
-		remove_theme_constant_override("outline_size")
 	_frame.modulate = COMBO_ARMED_TINT if value else Color.WHITE
 
 ## Everything the card displays, for tests.
