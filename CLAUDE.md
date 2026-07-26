@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `436 checks, 0 failures` / `PASS`.
+on a clean tree ends with `477 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -101,57 +101,73 @@ No magic numbers anywhere else. But the constants are not uniformly live:
   hand size, HP) is read directly at battle time and takes effect
   immediately — no regen step needed.
 
-**These same five constants are also baked into the card art as printed
-numbers, and regenerating the `.tres` does not touch the art.**
-`assets/cards/card_jab.png`, `card_block.png` and `card_straight.png` are
-fully composed card faces — title, artwork, value badge, rules text and cost
-badge already drawn in — showing jab 6 damage / 1 cost, block 5 guard /
-1 cost, straight 9 damage / 2 cost. Changing `JAB_DAMAGE`, `BLOCK_GUARD`,
-`STRAIGHT_DAMAGE`, or either cost constant makes the card **lie** — the
-number on the art and the number the game actually uses will disagree —
-until someone regenerates new art to match. There is no automated guard for
-this (deliberately — see "Card art" below); check it by eye after any
-balance change that touches those five constants.
-
 ## Card art
 
-Card faces are looked up by convention, in `scripts/ui/card_art.gd`: a card
-with id `jab` uses `res://assets/cards/card_jab.png`. Adding a card's art is
-dropping in a matching PNG — no lookup table to edit, no code change. A card
-with no matching file falls back to `CardView`'s original coloured
-rectangle + labels rendering, which is a real, intentional degradation path
-for a card whose art has not been painted yet, not a bug.
+Card faces are composed at runtime, not painted. `CardView` stacks six layers
+— illustration, frame, then title, value, rules and cost text — and every
+number on the card is read from `CardData`. Nothing is baked into an image, so
+a balance change shows up on the card as soon as the `.tres` is regenerated.
 
-The three current images (`card_jab.png`, `card_block.png`,
-`card_straight.png`) are fully composed card faces, not raw illustrations —
-title banner, artwork, value badge, rules text and cost badge are already
-drawn in, which is why `CardView` hides its own name/cost/rules-text labels
-and coloured background/border whenever art is present (see `_apply_art()`).
-Each image has a wide transparent glow margin around the solid card body,
-and the vertical margin differs per card, so the images are used **whole**,
-never cropped — cropping each to its own opaque bounds would make the three
-cards different rendered sizes and break fan alignment.
+Two lookups, both by convention, both in `scripts/ui/card_art.gd`:
 
-**Known discrepancy — the Straight card's art describes the combo rule
-incorrectly, and this is expected, not a bug to "fix" by editing code:**
-`card_straight.png` prints *"Combo: If Jab was played earlier this turn,
-deal 50% more damage."* That is not what the game does. The actual rule
-(`ComboRule.evaluate()`, wired up as `BattleState._combo_rules`'s
-`ComboRule.jab_straight()`):
-- Jab must **immediately precede** the Straight — any card played in
-  between breaks the combo, not just "earlier this turn."
-- The bonus is 50% of the **combined** base damage of both cards
-  (6 + 9 = 15, `floori(15 * 0.5)` = +7), added to the Straight's base
-  damage — so a comboed Straight hits **16**, not the 13 you'd get from
-  boosting 9 alone by 50%.
+- **Illustration**, per card id: a card with id `jab` uses
+  `res://assets/illustrations/jab.png`.
+- **Frame**, per variant: a card tagged `defense` gets
+  `res://assets/frames/defense.png`, everything else `attack.png`.
 
-The user has decided the code is authoritative here and the art will be
-regenerated later; until then, treat the printed rules text as wrong and the
-`ComboRule` / `BattleConfig.COMBO_BONUS_RATIO` code path as the truth. This
-is a deliberate documentation-over-automated-guard choice, matching the
-"card values are baked into the art" note in **Change balance** above — do
-not add a runtime check that cross-references card art text against
-`ComboRule`.
+That asymmetry is the point. Adding a card means authoring a `.tres` and
+dropping in **one** illustration — the frame it wears already exists, chosen by
+tag. A card with no illustration yet renders a complete, correct frame around
+an empty window: a real degradation path, not a bug.
+
+`CardArt`'s cache is keyed by resolved path rather than by id or variant name.
+Keying by the bare name would collide the day someone adds a card with id
+`attack` — its illustration and the attack frame would share a key and serve
+each other's texture.
+
+**Geometry and typography live in `scripts/ui/card_template.gd`**, as zones
+normalized to 0-1 fractions of the card rect rather than pixels — `CARD_SIZE`
+has changed once already, and normalized zones survive that without a
+re-measure. Only two zones differ between the frames: the value badge (right of
+the burst on attack, centred in the shield on defense) and the cost badge.
+`RULES_ZONE` is `Rect2(0.175, 0.688, 0.495, 0.132)`, and none of those four
+numbers comes from the cost circle — they come from the parchment's usable
+interior. Top is `.688` because the defense shield hangs lower than the attack
+burst's `.672`; bottom is `.820` because the attack frame's bottom-right corner
+ornament cuts in there; the right edge is `.670` because that same ornament
+reaches further in than the cost circle does (the circle's own left edge is
+`.697` on defense, `.722` on attack — never the binding constraint).
+`RULES_SIZE` is `8`, chosen by rendering rather than arithmetic: nothing about
+it can be derived from the zone's dimensions alone. `test_card_template.gd`
+asserts the zone's clearance from the cost circle.
+
+**Card-face layout cannot be verified by tests.** An assertion that
+`_value_label.position` equals the template zone proves the code matches the
+constants — and it is the constants that are the guess. Judge it from a
+render:
+
+```bash
+"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --path . \
+  --script res://tools/capture_cards.gd
+```
+
+writes `/tmp/card-faces.png` with all three cards at 1x and 3x
+(`tools/capture_cards.gd` also renders an armed/un-armed pair, to judge the
+combo tint below). Run it **non-headless** — `get_texture()` needs a rendering
+context. This is the static sibling of "Verifying animation" below, and it has
+the same shape: green tests, wrong picture.
+
+A state indicator drawn on top of an element that already has that colour
+needs measuring, not eyeballing. `set_combo_armed()` tints the frame with
+`COMBO_ARMED_TINT = Color(1.30, 1.20, 0.88)` — a 30% overbright warm push — on
+a frame that is already gold. An earlier version lerped toward gold instead;
+it satisfied the `!= Color.WHITE` assertion but moved mean rendered gold luma
+from 167.4 to 170.1, a 1.6% change that read as nothing at all in the capture.
+The test passed either way — only the render told them apart.
+
+Frame and illustration `.import` files must keep `mipmaps/generate=true`.
+Cards draw at a 5x (frame) and 10x (illustration) downscale while swaying and
+rotating; without mipmaps that shimmers rather than merely softening.
 
 ## Timing rules that are easy to get wrong
 
@@ -340,7 +356,7 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 436 headless checks. What is
+Playable single battle, fully art-directed, 477 headless checks. What is
 conspicuously still placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen

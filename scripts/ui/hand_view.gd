@@ -14,8 +14,9 @@ const FAN_ARCH_HEIGHT: float = 20.0
 ## Chosen from the art's own margins, not CARD_SIZE.x: the card images carry
 ## a wide transparent glow border, so the *visible* card body is narrower
 ## than the CardView rect. Measured across all three source images the solid
-## body spans ~852 of 1024px width, i.e. ~83.2% (x[85..937] for card_jab.png,
-## similar for the other two). At CARD_SIZE.x = 200 (the reflow that made
+## body spans ~852 of 1024px width, i.e. ~83.2% (x[85..937] on the original,
+## since-retired pre-composed card art; similar for the other two). At
+## CARD_SIZE.x = 200 (the reflow that made
 ## room for larger cards -- see CardView.CARD_SIZE) that is a visible body of
 ## 200 * (852.0 / 1024.0) ≈ 166.4px.
 ##
