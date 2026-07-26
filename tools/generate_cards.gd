@@ -57,7 +57,12 @@ func _make_straight() -> CardData:
 	# it. This does regenerate, so a balance change produces correct text.
 	var combo_bonus: int = floori(
 		(BattleConfig.JAB_DAMAGE + BattleConfig.STRAIGHT_DAMAGE) * BattleConfig.COMBO_BONUS_RATIO)
-	card.rules_text = "Deal %d damage. Combo: right after Jab, deal +%d." % [
+	# Phrasing is load-bearing on length, not just meaning: the parchment's
+	# measured usable height fits two lines at RULES_SIZE, and the longer
+	# "...right after Jab, deal +N." wrapped to three, overrunning the panel.
+	# This says the same two things -- immediacy, and the exact bonus -- in a
+	# form that wraps to two. Keep it that way if the wording is ever revised.
+	card.rules_text = "Deal %d damage. Combo: +%d right after Jab." % [
 		BattleConfig.STRAIGHT_DAMAGE, combo_bonus]
 	var damage := DamageEffect.new()
 	damage.amount = BattleConfig.STRAIGHT_DAMAGE

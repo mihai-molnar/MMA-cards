@@ -12,7 +12,15 @@ extends Button
 signal card_selected(view: CardView)
 
 const CARD_SIZE: Vector2 = Vector2(200, 300)
-const COMBO_BORDER_COLOR: Color = Color(1.0, 0.80, 0.20)
+## Combo-armed BRIGHTENS the frame rather than tinting it gold, and the channel
+## values are deliberately above 1.0. The obvious approach --
+## `Color.WHITE.lerp(Color(1.0, 0.80, 0.20), 0.25)`, which is what shipped
+## first -- makes an already-gold frame very slightly warmer: measured against
+## a render, mean gold luma moved 167.4 -> 170.1, a 1.6% shift that is simply
+## not visible on a card swaying in a fan. Godot treats modulate above 1.0 as
+## overbright, so this reads as the card lighting up, which is the state being
+## communicated. Blue stays below 1.0 so it brightens toward gold, not white.
+const COMBO_ARMED_TINT: Color = Color(1.30, 1.20, 0.88)
 const UNAFFORDABLE_ALPHA: float = 0.45
 
 const HOVER_Z: int = 50
@@ -166,7 +174,10 @@ func _build() -> void:
 	# Dark ink on the parchment: no outline, and the only wrapping label.
 	_rules_label = _make_label(CardTemplate.RULES_SIZE, CardTemplate.RULES_COLOR, false)
 	_rules_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_rules_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	# Centred, not top-aligned: RULES_ZONE is fitted to the parchment, and cards
+	# differ in line count (Block wraps to one line, Straight to two). Pinning to
+	# the top leaves a one-line card's text floating above an empty panel.
+	_rules_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	add_child(_rules_label)
 
 	pressed.connect(_on_pressed)
@@ -278,7 +289,7 @@ func set_combo_armed(value: bool) -> void:
 		add_theme_constant_override("outline_size", 3)
 	else:
 		remove_theme_constant_override("outline_size")
-	_frame.modulate = Color.WHITE.lerp(COMBO_BORDER_COLOR, 0.25) if value else Color.WHITE
+	_frame.modulate = COMBO_ARMED_TINT if value else Color.WHITE
 
 ## Everything the card displays, for tests.
 func debug_text() -> String:

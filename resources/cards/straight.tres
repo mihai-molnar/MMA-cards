@@ -15,4 +15,4 @@ display_name = "STRAIGHT"
 cost = 2
 tags = Array[StringName]([&"straight", &"attack"])
 effects = Array[ExtResource("1_4s6pe")]([SubResource("Resource_akwbd")])
-rules_text = "Deal 9 damage. Combo: right after Jab, deal +7."
+rules_text = "Deal 9 damage. Combo: +7 right after Jab."

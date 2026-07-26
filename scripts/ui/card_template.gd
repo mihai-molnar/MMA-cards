@@ -24,10 +24,22 @@ const DEFENSE: StringName = &"defense"
 ## panel are drawn in the same place on each.
 const TITLE_ZONE: Rect2 = Rect2(0.146, 0.127, 0.713, 0.094)
 const WINDOW_ZONE: Rect2 = Rect2(0.154, 0.253, 0.694, 0.312)
-## Right edge stops at .685 to clear the cost circle, whose left edge is .700
-## on the defense frame and .723 on the attack frame. Text running under that
-## circle draws perfectly and simply cannot be read.
-const RULES_ZONE: Rect2 = Rect2(0.175, 0.665, 0.510, 0.195)
+## Fitted to the parchment's USABLE interior, which is a good deal smaller than
+## its bounding box -- the frame's corner ornaments and the badge above cut into
+## it. Measured per row off both frame PNGs rather than inferred from the bbox:
+##
+##   top    .688  the defense shield hangs lower than the attack burst (.672),
+##                so the shared zone has to clear the later of the two
+##   bottom .820  the attack frame's bottom corner ornament cuts in here
+##                (defense allows .831); take the tighter
+##   right  .670  NOT set by the cost circle (whose left edge is .697 on
+##                defense, .722 on attack) but by the bottom-right ornament,
+##                which reaches further in than the circle does
+##
+## Deriving this from the parchment's bounding box instead gives .665-.868, and
+## a three-line card then renders its last line over the frame. It looks nearly
+## right, which is why it has to be measured rather than eyeballed.
+const RULES_ZONE: Rect2 = Rect2(0.175, 0.688, 0.495, 0.132)
 
 ## The value and cost badges are the ONLY zones that differ between the two
 ## frames, and both are centred on a drawn icon rather than fitted to a panel
@@ -55,7 +67,17 @@ const FONT: Font = null
 const TITLE_SIZE: int = 17
 const VALUE_SIZE: int = 22
 const COST_SIZE: int = 18
-const RULES_SIZE: int = 11
+## 8, not 11. RULES_ZONE's measured usable height is .132 -> ~40px at the
+## current CARD_SIZE, and the default font's line pitch runs about 1.7x its
+## size. Sizes were tried against a real render, not calculated:
+##   11 -> ~18px pitch, Straight took 3 lines and overran the parchment
+##    9 -> ~15px pitch, still 3 lines (~46px) -- the sentence break after
+##         "damage." leaves line 1 short, so shortening the text did not help
+##    8 -> ~14px pitch and ~23 chars per line, which fits "Deal 9 damage.
+##         Combo: +7" on line 1 and collapses the card to 2 lines (~28px)
+## The card is drawn through the project's 2.222x canvas magnification, so 8
+## here renders near 18px on screen -- small in the constant, not on the card.
+const RULES_SIZE: int = 8
 
 const TITLE_COLOR: Color = Color(0.98, 0.94, 0.80)
 const VALUE_COLOR: Color = Color(1.00, 1.00, 1.00)

@@ -161,6 +161,15 @@ func _test_combo_armed_idempotent(t: TestRunner) -> void:
 		"calling set_combo_armed(true) three times matches calling it once")
 	t.check(view._frame.modulate != Color.WHITE, "the frame is actually tinted while combo-armed")
 
+	# "Not white" is too weak a bar, and this is the check that says why. The
+	# first implementation lerped 25% toward gold, which on an ALREADY-GOLD
+	# frame moved mean rendered luma 167.4 -> 170.1 -- a 1.6% shift, invisible
+	# on a card swaying in a fan, and passing "!= Color.WHITE" the whole time.
+	# The tint has to be overbright (Godot treats modulate > 1.0 as a boost) so
+	# the card reads as lit up rather than fractionally warmer.
+	t.check(view._frame.modulate.r > 1.0 and view._frame.modulate.g > 1.0,
+		"the armed tint brightens the frame rather than only warming it")
+
 	view.set_combo_armed(false)
 	t.check_eq(view._frame.modulate, Color.WHITE, "un-arming returns the frame to its untinted colour")
 
