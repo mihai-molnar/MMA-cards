@@ -167,8 +167,16 @@ func _test_combo_armed_idempotent(t: TestRunner) -> void:
 	# on a card swaying in a fan, and passing "!= Color.WHITE" the whole time.
 	# The tint has to be overbright (Godot treats modulate > 1.0 as a boost) so
 	# the card reads as lit up rather than fractionally warmer.
-	t.check(view._frame.modulate.r > 1.0 and view._frame.modulate.g > 1.0,
-		"the armed tint brightens the frame rather than only warming it")
+	# ">1.0" alone is too loose a bar too: (1.001, 1.001, 0.99) would pass it
+	# and still read as "fractionally warmer," not "lit up." Require a real
+	# margin on red and green, and pin blue below 1.0 -- the design intent
+	# above is "brightens toward gold, not white," which a blue channel
+	# allowed to cross 1.0 would quietly violate.
+	const MIN_BRIGHT_MARGIN: float = 1.15
+	t.check(view._frame.modulate.r > MIN_BRIGHT_MARGIN and view._frame.modulate.g > MIN_BRIGHT_MARGIN,
+		"the armed tint brightens the frame by a real margin, not a hair above white")
+	t.check(view._frame.modulate.b < 1.0,
+		"blue stays below 1.0 so the tint reads as gold, not white")
 
 	view.set_combo_armed(false)
 	t.check_eq(view._frame.modulate, Color.WHITE, "un-arming returns the frame to its untinted colour")
