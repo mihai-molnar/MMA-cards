@@ -5,6 +5,7 @@ const TestRunner := preload("res://tests/run_tests.gd")
 func run(t: TestRunner) -> void:
 	_test_cards_load(t)
 	_test_starting_deck(t)
+	_test_effect_totals(t)
 
 func _test_cards_load(t: TestRunner) -> void:
 	# Compared against BattleConfig, not literals: the .tres files are baked
@@ -58,3 +59,23 @@ func _test_starting_deck(t: TestRunner) -> void:
 	var original_amount: int = effect_b.amount
 	effect_a.amount += 1000
 	t.check_eq(effect_b.amount, original_amount, "mutating one jab's effect leaves the other jab's effect unchanged")
+
+## The badge number on a composed card face is derived from these two, never
+## stored, so they are what stops a card printing a value the rules disagree
+## with. Both must return 0 rather than push_error for a card of the other
+## kind -- CardView reads both and shows the one its frame calls for.
+func _test_effect_totals(t: TestRunner) -> void:
+	var blocker: CardData = CardLibrary.load_card(&"block")
+	t.check_eq(blocker.total_guard(), BattleConfig.BLOCK_GUARD,
+		"block's total_guard() is BattleConfig.BLOCK_GUARD")
+	t.check_eq(blocker.total_base_damage(), 0,
+		"a card with no DamageEffect totals zero damage")
+
+	var jab: CardData = CardLibrary.load_card(&"jab")
+	t.check_eq(jab.total_guard(), 0, "a card with no GuardEffect totals zero guard")
+	t.check_eq(jab.total_base_damage(), BattleConfig.JAB_DAMAGE,
+		"jab's total_base_damage() is BattleConfig.JAB_DAMAGE")
+
+	var empty := CardData.new()
+	t.check_eq(empty.total_guard(), 0, "a card with no effects at all totals zero guard")
+	t.check_eq(empty.total_base_damage(), 0, "a card with no effects at all totals zero damage")
