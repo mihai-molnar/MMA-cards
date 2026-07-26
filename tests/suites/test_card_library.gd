@@ -5,6 +5,8 @@ const TestRunner := preload("res://tests/run_tests.gd")
 func run(t: TestRunner) -> void:
 	_test_cards_load(t)
 	_test_starting_deck(t)
+	_test_effect_totals(t)
+	_test_straight_rules_text_matches_the_combo_rule(t)
 
 func _test_cards_load(t: TestRunner) -> void:
 	# Compared against BattleConfig, not literals: the .tres files are baked
@@ -58,3 +60,48 @@ func _test_starting_deck(t: TestRunner) -> void:
 	var original_amount: int = effect_b.amount
 	effect_a.amount += 1000
 	t.check_eq(effect_b.amount, original_amount, "mutating one jab's effect leaves the other jab's effect unchanged")
+
+## The badge number on a composed card face is derived from these two, never
+## stored, so they are what stops a card printing a value the rules disagree
+## with. Both must return 0 rather than push_error for a card of the other
+## kind -- CardView reads both and shows the one its frame calls for.
+func _test_effect_totals(t: TestRunner) -> void:
+	var blocker: CardData = CardLibrary.load_card(&"block")
+	t.check_eq(blocker.total_guard(), BattleConfig.BLOCK_GUARD,
+		"block's total_guard() is BattleConfig.BLOCK_GUARD")
+	t.check_eq(blocker.total_base_damage(), 0,
+		"a card with no DamageEffect totals zero damage")
+
+	var jab: CardData = CardLibrary.load_card(&"jab")
+	t.check_eq(jab.total_guard(), 0, "a card with no GuardEffect totals zero guard")
+	t.check_eq(jab.total_base_damage(), BattleConfig.JAB_DAMAGE,
+		"jab's total_base_damage() is BattleConfig.JAB_DAMAGE")
+
+	var empty := CardData.new()
+	t.check_eq(empty.total_guard(), 0, "a card with no effects at all totals zero guard")
+	t.check_eq(empty.total_base_damage(), 0, "a card with no effects at all totals zero damage")
+
+## Ties the printed sentence to the rule that actually runs. The bonus is
+## computed by evaluating ComboRule itself rather than written as a literal,
+## so changing COMBO_BONUS_RATIO without regenerating the cards fails here
+## instead of leaving the card quietly printing a stale number -- which is
+## precisely what the painted card face did for the whole of its life.
+func _test_straight_rules_text_matches_the_combo_rule(t: TestRunner) -> void:
+	var jab: CardData = CardLibrary.load_card(&"jab")
+	var straight: CardData = CardLibrary.load_card(&"straight")
+
+	var rule: ComboRule = ComboRule.jab_straight()
+	var bonus: int = rule.evaluate([jab] as Array, straight)
+	t.check(bonus > 0, "the jab->straight combo awards a bonus to compare against")
+	t.check(straight.rules_text.contains("+%d" % bonus),
+		"straight's rules text prints the bonus ComboRule actually awards")
+
+	# The old painted face said "earlier this turn", which is wrong -- any card
+	# in between breaks the combo. The wording must say immediately.
+	t.check(straight.rules_text.contains("right after Jab"),
+		"straight's rules text states the combo needs Jab immediately before")
+	t.check(not straight.rules_text.contains("50%"),
+		"straight's rules text does not repeat the old face's 50%-of-this-card claim")
+
+	# The other two cards stay single-sentence.
+	t.check(not jab.rules_text.contains("Combo"), "jab's rules text mentions no combo")

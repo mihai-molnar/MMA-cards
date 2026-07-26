@@ -21,5 +21,16 @@ func total_base_damage() -> int:
 			total += (effect as DamageEffect).amount
 	return total
 
+## Total guard this card grants. Mirrors total_base_damage(), and exists for
+## the same reason: the composed card face derives its badge number from the
+## effects rather than from a stored field, so the printed value cannot drift
+## from what the card actually does.
+func total_guard() -> int:
+	var total: int = 0
+	for effect: CardEffect in effects:
+		if effect is GuardEffect:
+			total += (effect as GuardEffect).amount
+	return total
+
 func has_tag(tag: StringName) -> bool:
 	return tags.has(tag)
