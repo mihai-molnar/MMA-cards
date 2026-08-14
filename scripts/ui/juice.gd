@@ -19,9 +19,15 @@ const SPRING_TRANS: Tween.TransitionType = Tween.TRANS_BACK
 const SPRING_EASE: Tween.EaseType = Tween.EASE_OUT
 
 # --- Hover ---------------------------------------------------------------
+## Big Slay-the-Spire zoom: the hovered card is the one being READ, so it
+## scales up until its rules text is comfortable. At 1.35 about the
+## bottom-centre pivot its top reaches past the fighter panels -- accepted,
+## it draws above them (CardView.HOVER_Z) and only while hovered. The old
+## "hovered card never overlaps the panels" invariant (scale 1.12) is
+## deliberately retired; see hand_view.gd's HAND_BASE_Y comment.
 const HOVER_TIME: float = 0.16
-const HOVER_LIFT: float = 34.0
-const HOVER_SCALE: float = 1.12
+const HOVER_LIFT: float = 40.0
+const HOVER_SCALE: float = 1.35
 
 # --- Squash and stretch --------------------------------------------------
 const SQUASH_SCALE: Vector2 = Vector2(1.14, 0.86)
@@ -47,6 +53,11 @@ const LUNGE_FADE_RATIO: float = 0.6
 ## read as landing rather than passing through.
 const HITSTOP_TIME: float = 0.09
 const HITSTOP_SCALE: float = 0.05
+## Damage-scaled freeze: a jab barely catches, a combo Straight visibly hangs.
+## MIN doubles as the base of the ramp -- hit_stop_duration(0) == MIN.
+const HITSTOP_MIN_TIME: float = 0.06
+const HITSTOP_MAX_TIME: float = 0.16
+const HITSTOP_PER_DAMAGE: float = 0.006
 
 # --- Screen shake --------------------------------------------------------
 const SHAKE_TIME: float = 0.28
@@ -75,6 +86,14 @@ const IDLE_PERIOD: float = 2.6
 const TILT_MAX_DEG: float = 7.0
 const TILT_MAX_PX: float = 4.0
 const TILT_LERP_SPEED: float = 12.0
+
+# --- Hand parting on hover ------------------------------------------------
+## Neighbours of the hovered card slide aside to make room, Slay the Spire
+## style. PART_PX is what the immediate neighbour moves; further cards fall
+## off by distance. Lerped per-frame like cursor tilt, never tweened, so it
+## composes with the hover lift instead of fighting it in the _tween slot.
+const PART_PX: float = 34.0
+const PART_LERP_SPEED: float = 10.0
 
 # --- Staggered deal ------------------------------------------------------
 const DEAL_STAGGER: float = 0.055
@@ -108,11 +127,13 @@ const RECT_SHAKE_MIN: float = 3.0
 const RECT_SHAKE_MAX: float = 10.0
 
 
-## Composes a card's on-screen position from its three layers. Tweens drive
-## `anim` as an ABSOLUTE value; idle sway and cursor tilt are additive on top.
-## Pure and static so the layer most likely to break is the easiest to test.
-static func compose_position(anim: Vector2, idle: Vector2, tilt: Vector2) -> Vector2:
-	return anim + idle + tilt
+## Composes a card's on-screen position from its four layers. Tweens drive
+## `anim` as an ABSOLUTE value; idle sway, cursor tilt and hand parting are
+## additive on top. Pure and static so the layer most likely to break is the
+## easiest to test.
+static func compose_position(anim: Vector2, idle: Vector2, tilt: Vector2,
+		part: Vector2 = Vector2.ZERO) -> Vector2:
+	return anim + idle + tilt + part
 
 static func compose_rotation(anim: float, idle: float, tilt: float) -> float:
 	return anim + idle + tilt
@@ -133,6 +154,20 @@ static func idle_rotation(time: float, phase: float) -> float:
 ## How far the whole view kicks for a hit of `amount` damage.
 static func screen_shake_amplitude(amount: int) -> float:
 	return clampf(SHAKE_BASE + amount * SHAKE_PER_DAMAGE, SHAKE_MIN, SHAKE_MAX)
+
+## How long the world freezes for a hit of `amount` damage.
+static func hit_stop_duration(amount: int) -> float:
+	return clampf(HITSTOP_MIN_TIME + amount * HITSTOP_PER_DAMAGE,
+		HITSTOP_MIN_TIME, HITSTOP_MAX_TIME)
+
+## Horizontal offset for the card at `index` while the card at `hovered` is
+## hovered. Signed: right neighbours move right, left neighbours left, with a
+## 1/distance falloff. `hovered` < 0 means no card is hovered.
+static func part_offset(index: int, hovered: int) -> float:
+	if hovered < 0 or index == hovered:
+		return 0.0
+	var distance: float = float(index - hovered)
+	return signf(distance) * PART_PX / absf(distance)
 
 ## How far a single fighter's rectangle shakes. Smaller than the screen kick,
 ## and deliberately the same formula FighterPanel already shipped.

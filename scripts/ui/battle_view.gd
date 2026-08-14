@@ -106,7 +106,9 @@ func _react_to_damage() -> void:
 		_fire_impact(amount)
 
 func _fire_impact(amount: int) -> void:
-	screen_fx.hit_stop()
+	# Both the freeze and the kick scale with the damage that landed, so a
+	# combo Straight reads meaningfully heavier than a jab.
+	screen_fx.hit_stop(Juice.hit_stop_duration(amount))
 	screen_fx.shake(Juice.screen_shake_amplitude(amount))
 	screen_fx.flash()
 

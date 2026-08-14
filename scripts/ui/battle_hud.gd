@@ -105,6 +105,9 @@ func _build() -> void:
 	end_turn.text = "END TURN"
 	end_turn.position = END_TURN_AT
 	end_turn.custom_minimum_size = END_TURN_SIZE
+	# No keyboard nav anywhere in the game: a focused button wears Godot's
+	# default white focus rectangle, which reads as a rendering glitch.
+	end_turn.focus_mode = Control.FOCUS_NONE
 	end_turn.pressed.connect(func() -> void: end_turn_pressed.emit())
 	add_child(end_turn)
 
@@ -131,6 +134,8 @@ func _build_result_panel() -> void:
 	restart.text = "RESTART"
 	restart.position = Vector2(476, 260)
 	restart.custom_minimum_size = Vector2(180, 48)
+	# Same reason as End Turn's: no focus, no white focus rectangle.
+	restart.focus_mode = Control.FOCUS_NONE
 	restart.pressed.connect(func() -> void: restart_pressed.emit())
 	_result_panel.add_child(restart)
 

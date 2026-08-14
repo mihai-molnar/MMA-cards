@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `528 checks, 0 failures` / `PASS`.
+on a clean tree ends with `555 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -130,20 +130,34 @@ normalized to 0-1 fractions of the card rect rather than pixels — `CARD_SIZE`
 has changed once already, and normalized zones survive that without a
 re-measure. Only two zones differ between the frames: the value badge (right of
 the burst on attack, centred in the shield on defense) and the cost badge.
-`RULES_ZONE` is `Rect2(0.175, 0.688, 0.495, 0.132)`, and none of those four
-numbers comes from the cost circle — they come from the parchment's usable
-interior. Top is `.688` because the defense shield hangs lower than the attack
-burst's `.672`; bottom is `.820` because the attack frame's bottom-right corner
-ornament cuts in there; the right edge is `.670` because that same ornament
-reaches further in than the cost circle does (the circle's own left edge is
-`.697` on defense, `.722` on attack — never the binding constraint).
-`RULES_SIZE` is `8`, chosen by rendering rather than arithmetic: nothing about
-it can be derived from the zone's dimensions alone. `test_card_template.gd`
-guards this with two tests: `_test_rules_zone_clears_both_cost_badges` checks
-clearance from the plain cost circle (cheap, but the weaker constraint — see
-above), and `_test_rules_zone_fits_the_painted_parchment` samples the actual
-frame PNGs pixel by pixel for the corner ornament, which is the one that
-actually binds.
+
+Two zone subtleties, both learned the hard way:
+
+- **`WINDOW_ZONE` covers the frame's transparent art opening with bleed, it
+  does not trace it.** The opening's edges are semi-transparent (ribbon drop
+  shadow above, badge flanks below), so an illustration cut to the opening
+  shows the background through those pixels as dark gaps between art and
+  frame — that shipped once. Overshoot is free: the frame draws over the
+  illustration. `_test_window_zone_covers_the_frame_opening` measures the
+  opening from the PNGs and asserts containment.
+- **`RULES_ZONE` is a wrapping box, not a text extent.** Lines are
+  centre-aligned inside it, so the zone is wide and centred on the
+  parchment's measured centre (x `.498`) even though the cost disc and
+  corner ornament cut into the parchment's lower-right — what must clear
+  the artwork is each rendered *line*, and the guards model exactly that:
+  `_test_rules_lines_clear_both_cost_badges` (cheap, art-independent) and
+  `_test_rules_lines_fit_the_painted_parchment` (samples the frame PNGs,
+  the binding one) greedily wrap each library card's text at the zone's
+  pixel width and assert per line. `_test_rules_zone_is_centred_on_the_
+  parchment` pins the zone centre to the painted centre — an off-centre
+  zone renders every centred line visibly left or right of the parchment's
+  middle, which is exactly how it used to look.
+
+The badge centres carry a deliberate `.007` downward nudge relative to the
+icons' measured pixel centres: digits have no descender, so a Label centring
+its full line box parks the glyph optically high in a circle or shield.
+`RULES_SIZE` is `8`, chosen by rendering rather than arithmetic: nothing
+about it can be derived from the zone's dimensions alone.
 
 **Card-face layout cannot be verified by tests.** An assertion that
 `_value_label.position` equals the template zone proves the code matches the
@@ -176,6 +190,13 @@ The test passed either way — only the render told them apart.
 Frame and illustration `.import` files must keep `mipmaps/generate=true`.
 Cards draw at a 5x (frame) and 10x (illustration) downscale while swaying and
 rotating; without mipmaps that shimmers rather than merely softening.
+Generating them is only half the requirement: mipmaps are SAMPLED only
+because `project.godot` sets
+`rendering/textures/canvas_textures/default_texture_filter=2` (Linear
+Mipmap). Godot's default canvas filter is plain Linear, which ignores
+mipmaps entirely — the project shipped that way once, and every card face
+rendered as pixelated shimmer despite correctly-imported mipmaps. Do not
+remove that setting.
 
 ## Timing rules that are easy to get wrong
 
@@ -301,6 +322,15 @@ off mid-flight.
 
 ## Layout geometry
 
+The hovered card uses a big Slay-the-Spire zoom (`Juice.HOVER_SCALE = 1.35`)
+and **deliberately overlaps the fighter panels while hovered** — it draws
+above everything at `CardView.HOVER_Z` and the overlap lasts only as long as
+the hover. Do not "fix" that overlap by shrinking the zoom; the zoom is the
+readability mechanism for the rules text. Hovering also parts the neighbours
+aside (`Juice.part_offset`, driven by `HandView._on_card_hover_changed`); the
+part offset is a fourth additive compose layer on `CardView`, lerped per
+frame like cursor tilt, and must never become a tween (see rule 2 above).
+
 The hand is a fan: cards rotate up to ±12° about their **bottom-centre**.
 Clearance against the HUD must therefore be measured against the **rotated
 silhouette**, not the axis-aligned rect — the corner swings ~47px past the box
@@ -317,6 +347,12 @@ missed one at a time before; grep for both.
 ## Conventions
 
 - Typed GDScript: explicit parameter and return types on every function.
+- Every Button gets `focus_mode = Control.FOCUS_NONE`. The game is
+  mouse-driven with no keyboard nav, and a clicked Button otherwise grabs
+  focus and wears Godot's default white focus rectangle — `flat = true` hides
+  the normal stylebox but NOT the focus one, which is how cards came to show
+  a white border after every click. `test_card_view.gd` asserts this for the
+  cards and both HUD buttons.
 - `PascalCase` class names, `snake_case` members, leading `_` for private.
 - Integer helpers: `mini()`, `maxi()`, `floori()` — not the float versions.
 - UI text is ASCII. The default font renders no emoji or symbol glyphs, so use
@@ -364,7 +400,7 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 528 headless checks. What is
+Playable single battle, fully art-directed, 555 headless checks. What is
 conspicuously still placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen

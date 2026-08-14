@@ -10,6 +10,9 @@ extends Button
 ## typography live in CardTemplate.
 
 signal card_selected(view: CardView)
+## Emitted by apply_hover on every actual state change, so HandView can part
+## the neighbours without HandView having to wire up its own mouse tracking.
+signal hover_changed(view: CardView, hovered: bool)
 
 const CARD_SIZE: Vector2 = Vector2(200, 300)
 ## Combo-armed BRIGHTENS the frame rather than tinting it gold, and the channel
@@ -55,6 +58,12 @@ var _idle_offset: Vector2 = Vector2.ZERO
 var _idle_rotation: float = 0.0
 var _tilt_offset: Vector2 = Vector2.ZERO
 var _tilt_rotation: float = 0.0
+## Hand parting (see HandView): where the fan wants this card shoved while a
+## neighbour is hovered, and the lerped live value. A fourth additive compose
+## layer, deliberately NOT a tween -- the shared _tween slot stays free for
+## hover/lunge, so parting can never fight them.
+var _part_target: Vector2 = Vector2.ZERO
+var _part_offset: Vector2 = Vector2.ZERO
 var _elapsed: float = 0.0
 var _lunging: bool = false
 
@@ -77,6 +86,10 @@ func _init() -> void:
 	# Bottom-centre, so rotation reads as a held fan rather than a pinwheel.
 	pivot_offset = Vector2(CARD_SIZE.x / 2.0, CARD_SIZE.y)
 	flat = true
+	# Never take keyboard focus: flat = true hides the normal stylebox, but a
+	# clicked Button still grabs focus and Godot paints its default white focus
+	# rectangle over the card. Mouse-driven game, no keyboard nav.
+	focus_mode = Control.FOCUS_NONE
 	clip_contents = true
 	_build()
 	_idle_phase = randf() * TAU
@@ -96,7 +109,8 @@ func _process(delta: float) -> void:
 	_elapsed += delta
 	_update_idle()
 	_update_tilt(delta)
-	position = Juice.compose_position(target_position, _idle_offset, _tilt_offset)
+	_update_part(delta)
+	position = Juice.compose_position(target_position, _idle_offset, _tilt_offset, _part_offset)
 	rotation = Juice.compose_rotation(target_rotation, _idle_rotation, _tilt_rotation)
 	scale = target_scale
 
@@ -124,6 +138,21 @@ func _update_tilt(delta: float) -> void:
 	var weight: float = clampf(delta * Juice.TILT_LERP_SPEED, 0.0, 1.0)
 	_tilt_offset = _tilt_offset.lerp(want_offset, weight)
 	_tilt_rotation = lerpf(_tilt_rotation, want_rotation, weight)
+
+## Eases the live part offset toward its target, same shape as _update_tilt.
+## The hovered card itself always has a zero target (HandView never parts it),
+## so this needs no hovered/lunging special case.
+func _update_part(delta: float) -> void:
+	var weight: float = clampf(delta * Juice.PART_LERP_SPEED, 0.0, 1.0)
+	_part_offset = _part_offset.lerp(_part_target, weight)
+
+## Where the fan wants this card shoved sideways while a neighbour is hovered.
+## Called by HandView; a plain target, lerped in _process, never a tween.
+func set_part_offset(x: float) -> void:
+	_part_target = Vector2(x, 0.0)
+
+func debug_part_target() -> Vector2:
+	return _part_target
 
 func debug_idle_offset() -> Vector2:
 	return _idle_offset
@@ -340,6 +369,7 @@ func apply_hover(value: bool) -> void:
 	if _hovered == value:
 		return
 	_hovered = value
+	hover_changed.emit(self, value)
 	if value:
 		z_index = HOVER_Z
 		_animate_to(rest_position - Vector2(0.0, Juice.HOVER_LIFT), 0.0, Vector2.ONE * Juice.HOVER_SCALE)

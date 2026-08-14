@@ -12,6 +12,34 @@ func run(t: TestRunner) -> void:
 	_test_zones_are_laid_out_from_the_template(t)
 	_test_combo_armed_idempotent(t)
 	_test_badge_falls_back_to_the_other_total_when_mistagged(t)
+	_test_no_focus_outline(t)
+
+## Clicking a Button grabs keyboard focus, and Godot draws its default white
+## focus rectangle over the focused control -- flat = true hides the normal
+## stylebox but NOT the focus one. The game is mouse-driven with no keyboard
+## navigation, so no button should ever take focus: this is what put a white
+## border over a card after every click.
+func _test_no_focus_outline(t: TestRunner) -> void:
+	var view: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	t.check_eq(view.focus_mode, Control.FOCUS_NONE,
+		"a card never grabs focus, so it never wears the focus outline")
+	view.free()
+
+	var hud := BattleHud.new()
+	var buttons: Array[Button] = []
+	_collect_buttons(hud, buttons)
+	t.check(buttons.size() >= 2, "the hud exposes its buttons (End Turn, Restart)")
+	for button: Button in buttons:
+		t.check_eq(button.focus_mode, Control.FOCUS_NONE,
+			"hud button '%s' never grabs focus" % button.text)
+	hud.free()
+
+func _collect_buttons(node: Node, out: Array[Button]) -> void:
+	for child: Node in node.get_children():
+		var button: Button = child as Button
+		if button != null:
+			out.append(button)
+		_collect_buttons(child, out)
 
 ## A CardData with no matching res://assets/illustrations/<id>.png -- exactly
 ## what a freshly authored card looks like on day one, .tres written and art

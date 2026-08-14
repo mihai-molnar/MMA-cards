@@ -23,40 +23,60 @@ const DEFENSE: StringName = &"defense"
 ## Identical on both frames: the ribbon, the art window and the parchment
 ## panel are drawn in the same place on each.
 const TITLE_ZONE: Rect2 = Rect2(0.146, 0.127, 0.713, 0.094)
-const WINDOW_ZONE: Rect2 = Rect2(0.154, 0.253, 0.694, 0.312)
-## Fitted to the parchment's USABLE interior, which is a good deal smaller than
-## its bounding box -- the frame's corner ornaments and the badge above cut into
-## it. Measured per row off both frame PNGs rather than inferred from the bbox:
+## COVERS the frame's transparent art opening with bleed on every side,
+## rather than tracing it. Measured opening (both frames): x .152-.849,
+## y .252-.584 -- but its edges are not clean rectangles. The ribbon's drop
+## shadow above and the badge's flanks below are SEMI-transparent, so an
+## illustration cut to the opening leaves those pixels showing the dark
+## background as a gap between art and frame (shipped once: a dark band
+## under the ribbon and dark pockets beside the badge). Overshoot is free --
+## the frame draws over the illustration and its paint covers the excess --
+## so the zone extends past the opening to just inside the opaque border
+## columns. test_card_template.gd asserts the zone contains the measured
+## opening.
+const WINDOW_ZONE: Rect2 = Rect2(0.14, 0.20, 0.72, 0.50)
+## A WRAPPING BOX, not a text extent: the label centres each wrapped line
+## inside it, so what must fit the artwork is each rendered LINE, not this
+## box (test_card_template.gd models the wrap and asserts exactly that).
 ##
+##   centre .498  the parchment's own measured centre (runs x .163-.834 at
+##                the full-width rows) -- rules text is centre-aligned, so it
+##                only LOOKS centred if the zone centre sits here. The
+##                previous zone ended at .670 to keep the BOX off the corner
+##                ornament, which pushed its centre to .423 and every line
+##                visibly left of the parchment's middle.
 ##   top    .688  the defense shield hangs lower than the attack burst (.672),
 ##                so the shared zone has to clear the later of the two
-##   bottom .820  the attack frame's bottom corner ornament cuts in here
-##                (defense allows .831); take the tighter
-##   right  .670  NOT set by the cost circle (whose left edge is .697 on
-##                defense, .722 on attack) but by the bottom-right ornament,
-##                which reaches further in than the circle does
-##
-## Deriving this from the parchment's bounding box instead gives .665-.868, and
-## a three-line card then renders its last line over the frame. It looks nearly
-## right, which is why it has to be measured rather than eyeballed.
-const RULES_ZONE: Rect2 = Rect2(0.175, 0.688, 0.495, 0.132)
+##   bottom .820  the vertical band the wrapped block is centred in; the
+##                lines themselves stay well above the ornament rows
+##   width  .600  chosen away from wrap borderlines: Straight's first line
+##                ("Deal 9 damage. Combo: +7", 103px) fits 120px with margin,
+##                and adding "right" (~125px) clearly does not, so the greedy
+##                wrap model in the tests and the label's own TextServer wrap
+##                agree instead of racing at a boundary
+const RULES_ZONE: Rect2 = Rect2(0.198, 0.688, 0.600, 0.132)
 
 ## The value and cost badges are the ONLY zones that differ between the two
 ## frames, and both are centred on a drawn icon rather than fitted to a panel
 ## -- hence a centre plus a box rather than a rect. On the attack frame the
 ## number sits in the free red plate to the right of the burst; on the defense
 ## frame it sits dead centre in the shield.
+## The y values sit ~.007 BELOW the icons' measured pixel centres (plate
+## rows .59-.64 -> .615; shield blue bbox centre y .607; disc centres .815
+## on both frames): digits have no descender, so a Label centring its full
+## line box (ascent + descent) parks the glyph visibly high in the icon.
+## The nudge is the optical correction, judged against a zoomed render.
 const VALUE_CENTRE: Dictionary = {
-	ATTACK: Vector2(0.591, 0.610),
-	DEFENSE: Vector2(0.487, 0.605),
+	ATTACK: Vector2(0.591, 0.617),
+	DEFENSE: Vector2(0.487, 0.612),
 }
 const VALUE_BOX: Dictionary = {
 	ATTACK: Vector2(0.100, 0.070),
 	DEFENSE: Vector2(0.150, 0.090),
 }
 const COST_CENTRE: Dictionary = {
-	ATTACK: Vector2(0.788, 0.815),
-	DEFENSE: Vector2(0.763, 0.814),
+	ATTACK: Vector2(0.788, 0.822),
+	DEFENSE: Vector2(0.763, 0.821),
 }
 const COST_BOX: Vector2 = Vector2(0.120, 0.070)
 
@@ -73,8 +93,8 @@ const COST_SIZE: int = 18
 ##   11 -> ~18px pitch, Straight took 3 lines and overran the parchment
 ##    9 -> ~15px pitch, still 3 lines (~46px) -- the sentence break after
 ##         "damage." leaves line 1 short, so shortening the text did not help
-##    8 -> ~14px pitch and ~23 chars per line, which fits "Deal 9 damage.
-##         Combo: +7" on line 1 and collapses the card to 2 lines (~28px)
+##    8 -> ~14px pitch, which collapses the card to 2 lines (~28px); at the
+##         current 120px wrap width line 1 is "Deal 9 damage. Combo: +7"
 ## The card is drawn through the project's 2.222x canvas magnification, so 8
 ## here renders near 18px on screen -- small in the constant, not on the card.
 const RULES_SIZE: int = 8

@@ -38,13 +38,13 @@ const HAND_CENTRE_X: float = 576.0
 ## ~16px of margin. See test_hand_arc.gd's
 ## _test_layout_invariants_across_hand_sizes for the assertion.
 ##
-## Also the reflow's other binding vertical check: a hovered *outer* card
-## straightens (rotation -> 0) and lifts by Juice.HOVER_LIFT while scaling up
-## by Juice.HOVER_SCALE about its bottom-centre pivot, so its top edge
+## A hovered card no longer stays clear of the fighter panels: with the big
+## Slay-the-Spire zoom (Juice.HOVER_SCALE = 1.35, HOVER_LIFT = 40) its top
 ## reaches HAND_BASE_Y - HOVER_LIFT - CARD_SIZE.y * (HOVER_SCALE - 1) =
-## 311 - 34 - 36 = 241. BattleHud's fighter panels end at y = 232
-## (PLAYER_PANEL_AT.y + FighterPanel.PANEL_SIZE.y), so that is only 9px of
-## clearance -- tight, but confirmed clear; see test_hand_arc.gd.
+## 311 - 40 - 105 = 166, well past the panels' bottom edge at y = 232. That
+## overlap is deliberate: the hovered card is the one being read, it draws
+## above everything (CardView.HOVER_Z), and it lasts only while hovered.
+## The old 1.12-scale "9px clear of the panels" invariant is retired.
 const HAND_BASE_Y: float = 311.0
 
 ## Where a played card flies. Defaults are replaced by BattleView with the real
@@ -58,6 +58,12 @@ var _defend_anchor: Vector2 = Vector2(130.0, 170.0)
 ## _on_card_selected returns, the play was rejected and the card is put back.
 var _pending_view: CardView = null
 var _pending_index: int = -1
+
+## The card currently hovered, for hand parting. Tracked by identity rather
+## than by a bare "hovered index" because hover events can arrive out of
+## order: sliding between overlapping cards can deliver B's hover-on before
+## A's hover-off, and the stale hover-off must not clear B's parting.
+var _hovered_view: CardView = null
 
 func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -88,12 +94,15 @@ func rebuild(battle: BattleState, deal: bool = false) -> void:
 			previous_positions[view.card] = view.target_position
 		remove_child(child)
 		child.queue_free()
+	# Every child was just freed, so nothing is hovered and nothing is parted.
+	_hovered_view = null
 
 	for index: int in range(battle.deck.hand.size()):
 		var view: CardView = CardView.create(battle.deck.hand[index])
 		var captured_index: int = index
 		view.card_selected.connect(
 			func(selected: CardView) -> void: _on_card_selected(captured_index, selected))
+		view.hover_changed.connect(_on_card_hover_changed)
 		add_child(view)
 
 	layout_cards()
@@ -224,6 +233,25 @@ func refresh_states(battle: BattleState) -> void:
 			continue
 		view.set_affordable(battle.can_play(index))
 		view.set_combo_armed(battle.combo_bonus_for(index) > 0)
+
+## Hand parting: hovering a card shoves its neighbours aside so the hovered
+## card has room to be read, Slay the Spire style. The offsets are additive
+## compose-layer targets on each CardView (see CardView.set_part_offset), so
+## they ride alongside the hover-lift tween instead of competing with it.
+func _on_card_hover_changed(view: CardView, hovered: bool) -> void:
+	if hovered:
+		_hovered_view = view
+	elif _hovered_view == view:
+		_hovered_view = null
+	else:
+		# Stale hover-off from a card the cursor already left; the parting for
+		# the currently hovered card must stay exactly as it is.
+		return
+	var hovered_index: int = -1 if _hovered_view == null else _hovered_view.get_index()
+	for index: int in range(get_child_count()):
+		var card: CardView = get_child(index) as CardView
+		if card != null:
+			card.set_part_offset(Juice.part_offset(index, hovered_index))
 
 func clear_hover() -> void:
 	for child: Node in get_children():
