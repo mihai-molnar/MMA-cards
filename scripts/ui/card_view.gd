@@ -214,8 +214,11 @@ func _build() -> void:
 func _make_label(font_size: int, color: Color, outlined: bool) -> Label:
 	var label := Label.new()
 	label.add_theme_font_size_override("font_size", font_size)
-	if CardTemplate.FONT != null:
-		label.add_theme_font_override("font", CardTemplate.FONT)
+	# Outlined labels are the display text (title, badges); un-outlined is the
+	# rules ink. The two faces are picked in CardTemplate, not here.
+	var font: Font = CardTemplate.DISPLAY_FONT if outlined else CardTemplate.FONT
+	if font != null:
+		label.add_theme_font_override("font", font)
 	label.add_theme_color_override("font_color", color)
 	if outlined:
 		label.add_theme_constant_override("outline_size", CardTemplate.OUTLINE_SIZE)

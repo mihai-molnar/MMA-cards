@@ -10,6 +10,7 @@ func run(t: TestRunner) -> void:
 	_test_rect_shake_amplitude(t)
 	_test_hit_stop_duration(t)
 	_test_part_offset(t)
+	_test_play_impact_delay(t)
 
 func _test_compose(t: TestRunner) -> void:
 	# A still card must sit exactly where layout put it, with no drift from
@@ -55,6 +56,18 @@ func _test_screen_shake_amplitude(t: TestRunner) -> void:
 		"a huge hit clamps to the maximum screen shake")
 	t.check(Juice.screen_shake_amplitude(16) > Juice.screen_shake_amplitude(6),
 		"a 16 damage combo shakes the screen harder than a 6 damage jab")
+
+func _test_play_impact_delay(t: TestRunner) -> void:
+	# The blow lands NEAR the end of the card's travel, not at the start and
+	# not exactly at the end: after the windup and most of the strike, while
+	# the card is dissolving into the target.
+	t.check(Juice.play_impact_delay() > Juice.ANTICIPATE_TIME,
+		"the impact lands after the windup, during the strike")
+	t.check(Juice.play_impact_delay() < Juice.ANTICIPATE_TIME + Juice.LUNGE_TIME,
+		"the impact lands before the card's travel fully completes")
+	t.check_eq(Juice.play_impact_delay(),
+		Juice.ANTICIPATE_TIME + Juice.LUNGE_TIME * Juice.LUNGE_IMPACT_RATIO,
+		"the impact delay is the windup plus the impact fraction of the strike")
 
 func _test_hit_stop_duration(t: TestRunner) -> void:
 	# Big hits must freeze the world longer than small ones, within clamps, so

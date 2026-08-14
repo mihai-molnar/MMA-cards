@@ -47,6 +47,15 @@ const LUNGE_SCALE: float = 1.25
 ## read as a flicker rather than a punch landing -- holding it solid for
 ## most of the trip keeps it legible right up until it strikes.
 const LUNGE_FADE_RATIO: float = 0.6
+## Fraction of the strike at which the blow LANDS: HP, panel feedback, hit
+## stop, shake and flash all fire here, while the card is dissolving into
+## the target -- not at 1.0, where the wait after the visual arrival reads
+## as lag, and never at 0.0, which made every hit register while the card
+## was still in the hand.
+const LUNGE_IMPACT_RATIO: float = 0.85
+## A beat between the killing blow landing and the result banner, so the
+## impact reads before the screen changes subject.
+const RESULT_BEAT: float = 0.30
 
 # --- Hit stop ------------------------------------------------------------
 ## Near-freezing the world for a moment is the cheapest way to make an impact
@@ -154,6 +163,11 @@ static func idle_rotation(time: float, phase: float) -> float:
 ## How far the whole view kicks for a hit of `amount` damage.
 static func screen_shake_amplitude(amount: int) -> float:
 	return clampf(SHAKE_BASE + amount * SHAKE_PER_DAMAGE, SHAKE_MIN, SHAKE_MAX)
+
+## How long after a card is played its effects should visibly land: the
+## windup plus the impact fraction of the strike.
+static func play_impact_delay() -> float:
+	return ANTICIPATE_TIME + LUNGE_TIME * LUNGE_IMPACT_RATIO
 
 ## How long the world freezes for a hit of `amount` damage.
 static func hit_stop_duration(amount: int) -> float:

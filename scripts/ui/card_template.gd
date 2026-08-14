@@ -49,11 +49,12 @@ const WINDOW_ZONE: Rect2 = Rect2(0.14, 0.20, 0.72, 0.50)
 ##                so the shared zone has to clear the later of the two
 ##   bottom .820  the vertical band the wrapped block is centred in; the
 ##                lines themselves stay well above the ornament rows
-##   width  .600  chosen away from wrap borderlines: Straight's first line
-##                ("Deal 9 damage. Combo: +7", 103px) fits 120px with margin,
-##                and adding "right" (~125px) clearly does not, so the greedy
-##                wrap model in the tests and the label's own TextServer wrap
-##                agree instead of racing at a boundary
+##   width  .600  chosen away from wrap borderlines: in Kreon at RULES_SIZE,
+##                Straight's first line ("Deal 9 damage. Combo: +7", 106px)
+##                fits 120px with margin, and adding "right" (129px) clearly
+##                does not, so the greedy wrap model in the tests and the
+##                label's own TextServer wrap agree instead of racing at a
+##                boundary. Re-check these margins if the font or size moves.
 const RULES_ZONE: Rect2 = Rect2(0.198, 0.688, 0.600, 0.132)
 
 ## The value and cost badges are the ONLY zones that differ between the two
@@ -80,24 +81,29 @@ const COST_CENTRE: Dictionary = {
 }
 const COST_BOX: Vector2 = Vector2(0.120, 0.070)
 
-## null means the project default font. Every card font routes through this one
-## constant so dropping in a display face later is a one-line change rather
-## than a hunt through card_view.gd.
-const FONT: Font = null
-const TITLE_SIZE: int = 17
+## Kreon (OFL, assets/fonts/) -- the slab serif Slay the Spire itself uses
+## for card text. Two weights from the one variable file: bold for the
+## outlined display text (title, value, cost -- light-on-saturated, needs
+## the mass), regular for the rules ink on parchment (dark-on-light, needs
+## the readability). Every card font routes through these two constants;
+## CardView._make_label picks by its `outlined` flag. Swapping faces is a
+## re-point of these two .tres files, not a hunt through card_view.gd.
+const FONT: Font = preload("res://assets/fonts/kreon_text.tres")
+const DISPLAY_FONT: Font = preload("res://assets/fonts/kreon_display.tres")
+## 20 with Kreon where the fallback face wore 17: Kreon's caps are narrower
+## (STRAIGHT at 20 is 94px against the title zone's 142px), so the size buys
+## presence without crowding the ribbon.
+const TITLE_SIZE: int = 20
 const VALUE_SIZE: int = 22
 const COST_SIZE: int = 18
-## 8, not 11. RULES_ZONE's measured usable height is .132 -> ~40px at the
-## current CARD_SIZE, and the default font's line pitch runs about 1.7x its
-## size. Sizes were tried against a real render, not calculated:
-##   11 -> ~18px pitch, Straight took 3 lines and overran the parchment
-##    9 -> ~15px pitch, still 3 lines (~46px) -- the sentence break after
-##         "damage." leaves line 1 short, so shortening the text did not help
-##    8 -> ~14px pitch, which collapses the card to 2 lines (~28px); at the
-##         current 120px wrap width line 1 is "Deal 9 damage. Combo: +7"
-## The card is drawn through the project's 2.222x canvas magnification, so 8
-## here renders near 18px on screen -- small in the constant, not on the card.
-const RULES_SIZE: int = 8
+## 10 with Kreon where the fallback face needed 8. Kreon is both narrower
+## and tighter-leaded (height 13.75 at 10 vs the fallback's 12 at 8), so the
+## bigger size still wraps Straight to 2 lines (~31px against the zone's
+## ~40px) with the first line "Deal 9 damage. Combo: +7" -- see the
+## RULES_ZONE width note above for the wrap-borderline margins. The card is
+## drawn through the project's 2.222x canvas magnification, so 10 here
+## renders near 22px on screen -- small in the constant, not on the card.
+const RULES_SIZE: int = 10
 
 const TITLE_COLOR: Color = Color(0.98, 0.94, 0.80)
 const VALUE_COLOR: Color = Color(1.00, 1.00, 1.00)

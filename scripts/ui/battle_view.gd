@@ -82,27 +82,32 @@ func _on_hand_changed() -> void:
 	_pending_deal = false
 	hand_view.rebuild(battle, deal)
 
+## The ENTIRE fighter-side reaction is deferred for a played card -- HP text,
+## panel flash, damage number, rect shake AND the whole-view impact -- not
+## just the screen effects. Deferring only the impact (the old behaviour)
+## let FighterPanel's own diff-driven feedback fire the instant the model
+## changed, so HP visibly dropped while the card was still leaving the hand.
+## The model updates immediately; the VIEW of the fighters lags by exactly
+## the card's travel-to-impact time. An enemy attack has no card animation
+## (_pending_reaction_delay is 0.0), so it lands immediately, exactly as
+## before. Hand affordability is NOT deferred: AP was genuinely spent the
+## moment the card was played, and the hand should dim right away.
 func _on_fighters_changed() -> void:
-	hud.update_fighters(battle)
 	hand_view.refresh_states(battle)
-	_react_to_damage()
-
-## FighterPanel diffs hp/guard itself and records what it saw, so the whole-view
-## reaction can be driven from that without BattleState needing a payload.
-##
-## For a played card, the card itself takes _pending_reaction_delay seconds to
-## travel to its target (see _on_card_chosen), so the reaction is deferred to
-## land with the blow instead of firing the instant the card is clicked. An
-## enemy attack has no card animation -- _pending_reaction_delay is 0.0 for
-## those, so it reacts immediately, exactly as before.
-func _react_to_damage() -> void:
-	var amount: int = hud.last_damage_amount()
-	if amount <= 0:
-		return
 	var delay: float = _pending_reaction_delay
 	if delay > 0.0 and is_inside_tree():
-		get_tree().create_timer(delay).timeout.connect(_fire_impact.bind(amount))
+		get_tree().create_timer(delay).timeout.connect(_land_fighter_update)
 	else:
+		_land_fighter_update()
+
+## FighterPanel diffs hp/guard itself and records what it saw, so the
+## whole-view impact can be driven from that without BattleState needing a
+## payload. Safe to run late or twice: a second update with nothing new to
+## diff records "none" and last_damage_amount() returns 0.
+func _land_fighter_update() -> void:
+	hud.update_fighters(battle)
+	var amount: int = hud.last_damage_amount()
+	if amount > 0:
 		_fire_impact(amount)
 
 func _fire_impact(amount: int) -> void:
@@ -114,10 +119,10 @@ func _fire_impact(amount: int) -> void:
 
 func _on_card_chosen(index: int) -> void:
 	# battle.play_card() emits fighters_changed synchronously, before this
-	# call returns, so the delay for _react_to_damage must be armed before
+	# call returns, so the delay for _on_fighters_changed must be armed before
 	# calling it -- there is no "after the fact" hook to detect a played card
 	# from inside the signal handler.
-	_pending_reaction_delay = Juice.ANTICIPATE_TIME + Juice.LUNGE_TIME
+	_pending_reaction_delay = Juice.play_impact_delay()
 	var played: bool = battle.play_card(index)
 	_pending_reaction_delay = 0.0
 	# The card only departs the hand once BattleState confirms the play; a
@@ -131,7 +136,20 @@ func _on_end_turn_pressed() -> void:
 	hud.suppress_enemy_guard_pulse()
 	battle.end_turn()
 
+## The banner waits for the killing blow to land (plus a beat) when the win
+## came from a played card -- battle_over is emitted synchronously from
+## inside play_card(), while the card has not even left the hand, and a
+## banner at that instant hides the entire payoff. RESULT_BEAT stacks on the
+## impact delay so this timer always fires after _land_fighter_update's.
 func _on_battle_over(player_won: bool) -> void:
+	var delay: float = _pending_reaction_delay
+	if delay > 0.0 and is_inside_tree():
+		get_tree().create_timer(delay + Juice.RESULT_BEAT).timeout.connect(
+			_show_result.bind(player_won))
+	else:
+		_show_result(player_won)
+
+func _show_result(player_won: bool) -> void:
 	# Drop any lifted card before the banner appears, so nothing is left raised
 	# behind it.
 	hand_view.clear_hover()

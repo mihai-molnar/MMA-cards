@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `555 checks, 0 failures` / `PASS`.
+on a clean tree ends with `558 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -282,6 +282,20 @@ animates away from a resting state and back. `FighterPanel._flash_rect` once
 captured the *live* colour as its home, and the fighter rectangles bleached
 permanently toward pink over a session.
 
+**The model updates instantly; the fighters' VIEW of it lands with the
+card.** `battle.play_card()` mutates state synchronously, but
+`BattleView._on_fighters_changed` defers the whole `hud.update_fighters`
+call (HP text, panel flash, damage number, rect shake, and the screen
+impact read from the resulting diff) by `Juice.play_impact_delay()` — the
+windup plus `LUNGE_IMPACT_RATIO` of the strike — so the hit registers as
+the card reaches its target, not while it is still leaving the hand.
+"Defer only the screen effects" was the shipped-and-wrong version: the
+panels diff on update, so updating them immediately dropped the HP with
+the card still in the fan. Enemy attacks have no card animation and land
+immediately (`_pending_reaction_delay` stays 0). Hand affordability
+dimming is deliberately NOT deferred — the AP is genuinely spent. The
+result banner waits the same delay plus `RESULT_BEAT` for the same reason.
+
 **`FighterPanel` derives damage feedback by diffing hp/guard itself**, so
 `BattleState` needs no damage payload and `scripts/core/` stays presentation-
 free. One subtlety: guard clearing at a turn start is indistinguishable from
@@ -400,7 +414,7 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 555 headless checks. What is
+Playable single battle, fully art-directed, 558 headless checks. What is
 conspicuously still placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen

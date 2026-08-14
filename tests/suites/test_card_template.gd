@@ -112,8 +112,9 @@ func _test_zones_are_normalized(t: TestRunner) -> void:
 ## the disc is therefore each RENDERED LINE, not the zone box -- these
 ## helpers model exactly what the label draws (greedy word wrap at the
 ## zone's pixel width, lines centred both ways) so the guards below can
-## assert on it. Wrap and metrics use ThemeDB.fallback_font, the same font
-## the label falls back to while CardTemplate.FONT is null.
+## assert on it. Wrap and metrics use the same font the rules label wears --
+## CardTemplate.FONT, falling back to the theme default while that is null
+## -- or the model measures a different face than the one on screen.
 
 const CARD_SIZE: Vector2 = Vector2(200.0, 300.0)
 ## Godot's default Label theme separates lines by 3px on top of font height.
@@ -130,8 +131,11 @@ func _rules_text(card: CardData) -> String:
 			parts.append(description)
 	return " ".join(parts)
 
+func _rules_font() -> Font:
+	return CardTemplate.FONT if CardTemplate.FONT != null else ThemeDB.fallback_font
+
 func _wrapped_lines(text: String, width_px: float) -> Array[String]:
-	var font: Font = ThemeDB.fallback_font
+	var font: Font = _rules_font()
 	var lines: Array[String] = []
 	var current: String = ""
 	for word: String in text.split(" ", false):
@@ -150,7 +154,7 @@ func _wrapped_lines(text: String, width_px: float) -> Array[String]:
 ## vertically in the zone, each line centred horizontally on the zone's
 ## centre, exactly as the label draws it.
 func _line_rects(lines: Array[String]) -> Array[Rect2]:
-	var font: Font = ThemeDB.fallback_font
+	var font: Font = _rules_font()
 	var line_height: float = font.get_height(CardTemplate.RULES_SIZE)
 	var pitch: float = line_height + LINE_SPACING
 	var block_px: float = lines.size() * line_height + (lines.size() - 1) * LINE_SPACING
