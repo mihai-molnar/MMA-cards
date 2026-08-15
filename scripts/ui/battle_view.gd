@@ -5,6 +5,7 @@ extends Node2D
 ## translates signals in both directions. It never computes rules.
 
 var battle: BattleState
+var run: RunState
 var hud: BattleHud
 var hand_view: HandView
 var status_tooltip: StatusTooltip
@@ -26,9 +27,18 @@ var _pending_reaction_delay: float = 0.0
 var _pending_deal: bool = false
 
 func _ready() -> void:
-	battle = BattleState.new()
+	run = RunState.new()
 	_build_ui()
+	_start_fight()
+
+## One call per fight: a fresh BattleState against the run's current
+## opponent, seeded with the carried hp. The old BattleState (and its
+## signal connections) is dropped with the reassignment -- deferred
+## timers that fire afterwards re-read `battle` and see the new fight.
+func _start_fight() -> void:
+	battle = BattleState.new(0, run.current_opponent(), run.player_hp)
 	_connect_battle()
+	hud.set_enemy_name(battle.enemy.display_name)
 	battle.start()
 
 func _build_ui() -> void:
@@ -38,6 +48,7 @@ func _build_ui() -> void:
 	hud = BattleHud.new()
 	hud.end_turn_pressed.connect(_on_end_turn_pressed)
 	hud.restart_pressed.connect(_on_restart_pressed)
+	hud.continue_pressed.connect(_on_continue_pressed)
 	layer.add_child(hud)
 
 	hand_view = HandView.new()
@@ -187,7 +198,10 @@ func _on_end_turn_pressed() -> void:
 ## inside play_card(), while the card has not even left the hand, and a
 ## banner at that instant hides the entire payoff. RESULT_BEAT stacks on the
 ## impact delay so this timer always fires after _land_fighter_update's.
+## The run records the result immediately (model state, like the battle
+## itself); only the banner is deferred.
 func _on_battle_over(player_won: bool) -> void:
+	run.record_result(player_won, battle.player.hp)
 	var delay: float = _pending_reaction_delay
 	if delay > 0.0 and is_inside_tree():
 		get_tree().create_timer(delay + Juice.RESULT_BEAT).timeout.connect(
@@ -199,16 +213,32 @@ func _show_result(player_won: bool) -> void:
 	# Drop any lifted card before the banner appears, so nothing is left raised
 	# behind it.
 	hand_view.clear_hover()
-	if player_won:
+	if not player_won:
+		hud.show_defeat()
+	elif run.is_complete():
 		hud.show_run_complete()
 	else:
-		hud.show_defeat()
+		hud.show_fight_intro(run.fight_number(), run.current_opponent().display_name)
 	hand_view.refresh_states(battle)
 
+## CONTINUE: the next fight of the same run, carried hp and all.
+func _on_continue_pressed() -> void:
+	hud.hide_result()
+	_suppress_transition_guard_pulses()
+	_start_fight()
+
+## RESTART: the whole run from fight 1 at full hp -- a loss and a completed
+## run both land here.
 func _on_restart_pressed() -> void:
 	hud.hide_result()
-	# A player who wins at full HP while still holding guard would otherwise
-	# get a spurious pulse when restart() zeroes it out.
+	_suppress_transition_guard_pulses()
+	run.reset()
+	_start_fight()
+
+## A fighter who ends a battle still holding guard would otherwise read the
+## fresh fight's zeroed guard as an absorb and pulse. Same reasoning as the
+## per-turn expiry suppressions -- a fight boundary is a guard expiry, not
+## a block.
+func _suppress_transition_guard_pulses() -> void:
 	hud.suppress_player_guard_pulse()
 	hud.suppress_enemy_guard_pulse()
-	battle.restart()

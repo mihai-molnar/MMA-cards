@@ -1,8 +1,10 @@
 # mma-cards
 
 Slay the Spire-inspired MMA card battler. Godot 4.5.1, typed GDScript.
-Currently a single-battle proof of concept: 14-card deck, 3 AP per turn,
-jab->straight combo, guard, strength, telegraphed enemy intent.
+Currently a two-fight run: 14-card deck, 3 AP per turn, jab->straight combo,
+guard, strength, telegraphed enemy intent, HP carried between fights. Fight
+1 is the Brawler, fight 2 the harder Kickboxer (who mirrors Low Kick's Leg
+Injury back at the player).
 
 ## Commands
 
@@ -18,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `644 checks, 0 failures` / `PASS`.
+on a clean tree ends with `724 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -64,6 +66,25 @@ Two layers, and the boundary is the point:
 `BattleState` is the only thing that mutates a battle. It emits signals; the view
 subscribes. The view never writes to the model.
 
+Within `scripts/core/`, an opponent is data, not code: `OpponentData` is one
+opponent (identity, hp, a fixed rotation of turns); `OpponentMove` is one
+labelled action inside a turn, built from the same `CardEffect`s cards use,
+so the enemy has no separate combat path. `OpponentLibrary` builds every
+`OpponentData` in code from `BattleConfig` constants (the opponent analogue
+of `CardLibrary`, minus the `.tres`/generator step — opponents have no art
+or composed face to bake). `EnemyBrain` is now a pure rotation interpreter:
+it steps through whatever `OpponentData` it is handed and contains no
+per-opponent branching. `RunState` owns what persists across fights — HP
+carry-over and position in the opponent sequence; `BattleState` stays
+run-blind, `battle_over` means only "this fight ended," and `BattleView`
+is what turns that into the next fight or a run-ending banner.
+
+There are two seams left for a future map: `RunState.current_opponent()`
+is today a linear walk of `BattleConfig.RUN_OPPONENTS`, the only place a
+branching map would change how the next opponent is chosen; and
+`BattleView`'s continue/restart handlers are the only place that decides
+what happens between fights (the seam a real map screen would replace).
+
 ## How to extend
 
 **Add a card:** author a `.tres` in `resources/cards/` directly, or add it to
@@ -98,6 +119,13 @@ a card with `extend_duration = true` on its `ApplyStatusEffect` ADDS
 durations on re-application (each Low Kick keeps the leg hurt one turn
 longer) instead of refreshing to the longer one.
 
+**Add an opponent:** write a `_make_*()` in `OpponentLibrary` that builds an
+`OpponentData` with its rotation of `OpponentMove`s, add its tunables to
+`BattleConfig`, register its id in `OpponentLibrary.opponent()`, and append
+the id to `BattleConfig.RUN_OPPONENTS`. **Never** add a branch to
+`BattleState` for an opponent — an `OpponentMove` resolves through the same
+`CardEffect`s a card does, so the enemy needs no combat path of its own.
+
 **Add a combo:** construct another `ComboRule` in `BattleState._combo_rules`.
 Rules match on card tags, so no card code changes. On the card face, write
 the word "Combo" plus the trigger ("Combo right after Jab.") — it renders
@@ -114,9 +142,13 @@ No magic numbers anywhere else. But the constants are not uniformly live:
   Commands above). `tests/suites/test_card_library.gd` asserts the loaded
   `.tres` values against these constants, so a forgotten regen now fails the
   suite instead of silently doing nothing.
-- Every other constant (enemy behavior, combo ratio, strength scaling, AP,
-  hand size, HP) is read directly at battle time and takes effect
-  immediately — no regen step needed.
+- Every other constant (combo ratio, strength scaling, AP, hand size, HP) is
+  read directly at battle time and takes effect immediately — no regen step
+  needed. That includes every `BRAWLER_*`, `KICKBOXER_*` and
+  `RUN_OPPONENTS` constant: `OpponentLibrary` reads them straight from
+  `BattleConfig` with no `.tres`/generator step of its own. The old
+  `ENEMY_*` constants are gone — enemy behavior is per-opponent now, not
+  a single shared enemy.
 
 ## Card art
 
@@ -388,9 +420,12 @@ measurement artifact.
 `BattleState` needs no damage payload and `scripts/core/` stays presentation-
 free. One subtlety: guard clearing at a turn start is indistinguishable from
 guard absorbing a hit in such a diff, so `BattleView` calls
-`suppress_next_guard_pulse()` at the three moments guard expires. Without it
-the game tells the player their Block worked on the two-in-three enemy turns
-that deal no damage.
+`suppress_next_guard_pulse()` at the moments guard expires. Without it the
+game tells the player their Block worked on the enemy turns that deal no
+damage. There is now a fourth suppression moment: the fight/run transition
+in `BattleView` — `_on_continue_pressed` and `_on_restart_pressed` both
+call `_suppress_transition_guard_pulses()`, so a fighter who ends a battle
+still holding guard doesn't read the next fight's zeroed guard as an absorb.
 
 ## Verifying animation — tests cannot see motion
 
@@ -502,12 +537,15 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 644 headless checks. What is
-conspicuously still placeholder:
+Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
+fully art-directed, 724 headless checks. What is conspicuously still
+placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen
   they are now the only unfinished-looking element. `FighterPanel` would take
   portrait art the same way `CardView` took card art.
 - **No sound.** Deliberately deferred from the juice pass — it needs audio
   assets, and it is the single largest remaining contributor to game feel.
-- **One battle, no run structure**, no deck-building, no card rewards.
+- **No map, no deck-building, no card rewards.** The run is a fixed two-fight
+  sequence; `RunState.current_opponent()` is the seam a branching map would
+  replace.
