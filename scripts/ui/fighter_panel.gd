@@ -64,6 +64,14 @@ func _init() -> void:
 static func shake_amplitude(amount: int) -> float:
 	return Juice.rect_shake_amplitude(amount)
 
+## The panel is built once with a placeholder name; the run swaps in each
+## opponent's real name at fight start.
+func set_fighter_name(name: String) -> void:
+	_name_label.text = name
+
+func fighter_name() -> String:
+	return _name_label.text
+
 func _build(display_name: String, rect_color: Color) -> void:
 	_rect = ColorRect.new()
 	_rect.color = rect_color

@@ -7,6 +7,7 @@ extends Control
 
 signal end_turn_pressed()
 signal restart_pressed()
+signal continue_pressed()
 
 const PLAYER_COLOR: Color = Color(0.20, 0.40, 0.85)
 const ENEMY_COLOR: Color = Color(0.85, 0.25, 0.25)
@@ -63,6 +64,8 @@ var _player_panel: FighterPanel
 var _enemy_panel: FighterPanel
 var _result_panel: Control
 var _result_label: Label
+var _restart_button: Button
+var _continue_button: Button
 
 func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -77,8 +80,11 @@ func _build() -> void:
 
 	_turn_label = _add_label("TURN 1", Vector2(24, 20), 20)
 
-	_intent_label = _add_label("", Vector2(820, 20), 20)
-	_intent_label.size = Vector2(300, 28)
+	# Wide enough for the longest multi-move telegraph
+	# ("INTENT: ATTACK 10 + BLOCK 10") without clipping; right-aligned so
+	# growth extends leftward into empty space.
+	_intent_label = _add_label("", Vector2(620, 20), 20)
+	_intent_label.size = Vector2(500, 28)
 	_intent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_intent_label.modulate = Color(1.0, 0.75, 0.35)
 
@@ -127,17 +133,28 @@ func _build_result_panel() -> void:
 
 	_result_label = Label.new()
 	_result_label.add_theme_font_size_override("font_size", 48)
-	_result_label.position = Vector2(400, 180)
+	# Full design-space width and centred: banner text now varies in length
+	# ("FIGHT 2: KICKBOXER", "RUN COMPLETE"), so a fixed x would park long
+	# strings visibly off-centre.
+	_result_label.position = Vector2(0, 180)
+	_result_label.size = Vector2(1152, 60)
+	_result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_result_panel.add_child(_result_label)
 
-	var restart := Button.new()
-	restart.text = "RESTART"
-	restart.position = Vector2(476, 260)
-	restart.custom_minimum_size = Vector2(180, 48)
+	_restart_button = _add_banner_button("RESTART", func() -> void: restart_pressed.emit())
+	_continue_button = _add_banner_button("CONTINUE", func() -> void: continue_pressed.emit())
+
+## Both banner buttons share one slot; _show_banner picks which is visible.
+func _add_banner_button(text: String, on_pressed: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.position = Vector2(476, 260)
+	button.custom_minimum_size = Vector2(180, 48)
 	# Same reason as End Turn's: no focus, no white focus rectangle.
-	restart.focus_mode = Control.FOCUS_NONE
-	restart.pressed.connect(func() -> void: restart_pressed.emit())
-	_result_panel.add_child(restart)
+	button.focus_mode = Control.FOCUS_NONE
+	button.pressed.connect(on_pressed)
+	_result_panel.add_child(button)
+	return button
 
 func _add_label(text: String, at: Vector2, font_size: int) -> Label:
 	var label := Label.new()
@@ -190,9 +207,38 @@ func suppress_player_guard_pulse() -> void:
 func suppress_enemy_guard_pulse() -> void:
 	_enemy_panel.suppress_next_guard_pulse()
 
-func show_result(player_won: bool) -> void:
-	_result_label.text = "YOU WIN" if player_won else "YOU LOSE"
-	_result_label.modulate = Color(0.5, 1.0, 0.5) if player_won else Color(1.0, 0.5, 0.5)
+## The run swaps the real opponent name in at each fight start.
+func set_enemy_name(name: String) -> void:
+	_enemy_panel.set_fighter_name(name)
+
+## Test hooks -- banner internals the suites assert without walking children.
+func debug_result_text() -> String:
+	return _result_label.text
+
+func debug_restart_button() -> Button:
+	return _restart_button
+
+func debug_continue_button() -> Button:
+	return _continue_button
+
+func debug_enemy_panel() -> FighterPanel:
+	return _enemy_panel
+
+func show_defeat() -> void:
+	_show_banner("YOU LOSE", Color(1.0, 0.5, 0.5), _restart_button)
+
+func show_run_complete() -> void:
+	_show_banner("RUN COMPLETE", Color(0.5, 1.0, 0.5), _restart_button)
+
+func show_fight_intro(fight_number: int, opponent_name: String) -> void:
+	_show_banner("FIGHT %d: %s" % [fight_number, opponent_name.to_upper()],
+		Color(1.0, 0.75, 0.35), _continue_button)
+
+func _show_banner(text: String, colour: Color, button: Button) -> void:
+	_result_label.text = text
+	_result_label.modulate = colour
+	_restart_button.visible = button == _restart_button
+	_continue_button.visible = button == _continue_button
 	_result_panel.visible = true
 
 func hide_result() -> void:

@@ -199,7 +199,10 @@ func _show_result(player_won: bool) -> void:
 	# Drop any lifted card before the banner appears, so nothing is left raised
 	# behind it.
 	hand_view.clear_hover()
-	hud.show_result(player_won)
+	if player_won:
+		hud.show_run_complete()
+	else:
+		hud.show_defeat()
 	hand_view.refresh_states(battle)
 
 func _on_restart_pressed() -> void:
