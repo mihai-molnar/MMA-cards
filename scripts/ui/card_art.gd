@@ -18,6 +18,9 @@ extends RefCounted
 const ILLUSTRATION_DIR: String = "res://assets/illustrations"
 const FRAME_DIR: String = "res://assets/frames"
 const ICON_DIR: String = "res://assets/icons"
+const PORTRAIT_DIR: String = "res://assets/portraits"
+const BACKGROUND_DIR: String = "res://assets/backgrounds"
+const UI_DIR: String = "res://assets/ui"
 
 ## Keyed by RESOLVED PATH, not by id or variant. Keying by the bare name would
 ## collide the day someone adds a card with id "attack": its illustration and
@@ -45,6 +48,21 @@ static func frame_for(variant: StringName) -> Texture2D:
 ## text status line instead.
 static func status_icon_for(status_id: StringName) -> Texture2D:
 	return _load("%s/%s.png" % [ICON_DIR, status_id])
+
+## Fighter portraits, keyed by fighter id: the player is &"player", an
+## opponent's id is its OpponentData.id. Null when missing -- the stage
+## renders a dark half instead, a legitimate degradation like a card
+## without an illustration.
+static func portrait_for(fighter_id: StringName) -> Texture2D:
+	return _load("%s/%s.png" % [PORTRAIT_DIR, fighter_id])
+
+static func background_for(name: StringName) -> Texture2D:
+	return _load("%s/%s.png" % [BACKGROUND_DIR, name])
+
+## HUD chrome (hp/ap value frames). assets/icons/ stays reserved for STATUS
+## icons keyed by status id -- these are not statuses.
+static func ui_icon_for(name: StringName) -> Texture2D:
+	return _load("%s/%s.png" % [UI_DIR, name])
 
 static func _load(path: String) -> Texture2D:
 	if _cache.has(path):

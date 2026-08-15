@@ -9,6 +9,8 @@ func run(t: TestRunner) -> void:
 	_test_missing_illustration_returns_null(t)
 	_test_results_are_cached(t)
 	_test_illustrations_and_frames_do_not_collide(t)
+	_test_portrait_lookup(t)
+	_test_stage_asset_lookups(t)
 
 func _test_illustrations_load(t: TestRunner) -> void:
 	for card_id: StringName in [&"jab", &"straight", &"block"]:
@@ -64,3 +66,15 @@ func _test_illustrations_and_frames_do_not_collide(t: TestRunner) -> void:
 	t.check(frame != null, "the master frame still resolves")
 	t.check(same_named_illustration == null,
 		"no illustration exists for the frame's name, and the frame does not stand in for one")
+
+func _test_portrait_lookup(t: TestRunner) -> void:
+	t.check(CardArt.portrait_for(&"player") != null, "the player portrait resolves")
+	t.check(CardArt.portrait_for(&"brawler") != null, "the brawler portrait resolves")
+	t.check(CardArt.portrait_for(&"kickboxer") != null, "the kickboxer portrait resolves")
+	t.check(CardArt.portrait_for(&"nobody") == null, "a missing portrait is a null fallback, not an error")
+
+func _test_stage_asset_lookups(t: TestRunner) -> void:
+	t.check(CardArt.background_for(&"octagon") != null, "the octagon background resolves")
+	t.check(CardArt.ui_icon_for(&"hp") != null, "the hp icon resolves")
+	t.check(CardArt.ui_icon_for(&"ap") != null, "the ap icon resolves")
+	t.check(CardArt.ui_icon_for(&"mp") == null, "a missing ui icon is a null fallback")
