@@ -189,6 +189,33 @@ static func rect_shake_amplitude(amount: int) -> float:
 	return clampf(RECT_SHAKE_BASE + amount / RECT_SHAKE_PER_DAMAGE,
 		RECT_SHAKE_MIN, RECT_SHAKE_MAX)
 
+# --- Portrait slam (fight start) ------------------------------------------
+## Two metal plates colliding: a fast ease-IN travel (accelerating into the
+## impact, not cushioning it), a hard screen kick at contact, then a small
+## outward recoil that resettles. The recoil is what sells the mass.
+const SLAM_TIME: float = 0.45
+const SLAM_TRANS: Tween.TransitionType = Tween.TRANS_QUART
+const SLAM_RECOIL_PX: float = 12.0
+const SLAM_RECOIL_TIME: float = 0.16
+const SLAM_SHAKE_AMPLITUDE: float = 18.0
+const SLAM_HIT_STOP: float = 0.10
+
+# --- Portrait hit feedback ------------------------------------------------
+const PORTRAIT_FLASH_TIME: float = 0.14
+const PORTRAIT_FLASH_COLOR: Color = Color(1.0, 0.45, 0.45, 0.35)
+const PORTRAIT_SHAKE_TIME: float = 0.22
+const PORTRAIT_SHAKE_STEPS: int = 5
+const PORTRAIT_SHAKE_BASE: float = 4.0
+const PORTRAIT_SHAKE_PER_DAMAGE: float = 0.8
+const PORTRAIT_SHAKE_MIN: float = 5.0
+const PORTRAIT_SHAKE_MAX: float = 16.0
+
 ## Applies the project's standard overshoot curve to a tween.
 static func spring(tween: Tween) -> Tween:
 	return tween.set_trans(SPRING_TRANS).set_ease(SPRING_EASE)
+
+## How far a struck portrait half kicks sideways. Between the rect shake
+## (small) and the screen kick (large) -- the portrait is the fighter now.
+static func portrait_shake_amplitude(amount: int) -> float:
+	return clampf(PORTRAIT_SHAKE_BASE + amount * PORTRAIT_SHAKE_PER_DAMAGE,
+		PORTRAIT_SHAKE_MIN, PORTRAIT_SHAKE_MAX)
