@@ -9,9 +9,6 @@ signal end_turn_pressed()
 signal restart_pressed()
 signal continue_pressed()
 
-const PLAYER_COLOR: Color = Color(0.20, 0.40, 0.85)
-const ENEMY_COLOR: Color = Color(0.85, 0.25, 0.25)
-
 ## z_index lifts a node above its parent's later siblings, so the banner must
 ## outrank a hovered (50) or lunging (60) card or they redraw over it.
 const RESULT_PANEL_Z: int = 100
@@ -38,13 +35,12 @@ const ENEMY_PANEL_AT: Vector2 = Vector2(918, 56)
 const END_TURN_AT: Vector2 = Vector2(985, 570)
 const END_TURN_SIZE: Vector2 = Vector2(150, 48)
 
-## Bottom-left corner controls. AP_LABEL_AT.x = 16 and DRAW_LABEL_AT.x = 16
-## mirror END_TURN_AT/DISCARD_LABEL_AT on the right. The leftmost fanned
-## card's true left-side edge (HandView.rotated_left_edge_at_y) sits at
-## x ≈ 182 where it crosses AP_LABEL_AT's row -- see test_hand_arc.gd for the
-## exact figure -- comfortably clear of the AP label's rendered width (well
-## under 100px at font size 24 for "AP  3 / 3", BattleConfig.AP_PER_TURN).
-const AP_LABEL_AT: Vector2 = Vector2(16, 556)
+## Bottom-left corner control. DRAW_LABEL_AT.x = 16 mirrors
+## DISCARD_LABEL_AT on the right. The leftmost fanned card's true left-side
+## edge (HandView.rotated_left_edge_at_y) clears its row -- see
+## test_hand_arc.gd for the exact figures. (The bottom-left AP text label
+## that used to sit above this is gone -- the AP readout moved into the
+## player FighterPanel's icon cluster.)
 const DRAW_LABEL_AT: Vector2 = Vector2(16, 596)
 
 ## Bottom-right pile count, mirroring DRAW_LABEL_AT. Right-aligned within
@@ -55,9 +51,9 @@ const DRAW_LABEL_AT: Vector2 = Vector2(16, 596)
 const DISCARD_LABEL_AT: Vector2 = Vector2(936, 620)
 const DISCARD_LABEL_SIZE: Vector2 = Vector2(200, 24)
 
+var _stage: FightStage
 var _turn_label: Label
 var _intent_label: Label
-var _ap_label: Label
 var _draw_label: Label
 var _discard_label: Label
 var _player_panel: FighterPanel
@@ -72,13 +68,13 @@ func _init() -> void:
 	_build()
 
 func _build() -> void:
-	var background := ColorRect.new()
-	background.set_anchors_preset(Control.PRESET_FULL_RECT)
-	background.color = Color(0.09, 0.09, 0.12)
-	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(background)
+	_stage = FightStage.new()
+	add_child(_stage)
 
-	_turn_label = _add_label("TURN 1", Vector2(24, 20), 20)
+	_turn_label = _add_label("TURN 1", Vector2(0, 16), 20)
+	_turn_label.size = Vector2(1152, 28)
+	_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HudText.style(_turn_label, 20)
 
 	# Wide enough for the longest multi-move telegraph
 	# ("INTENT: BLOCK 10 + BUFF +2 STR") without clipping; right-aligned so
@@ -86,7 +82,7 @@ func _build() -> void:
 	_intent_label = _add_label("", Vector2(620, 20), 20)
 	_intent_label.size = Vector2(500, 28)
 	_intent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_intent_label.modulate = Color(1.0, 0.75, 0.35)
+	HudText.style(_intent_label, 20)
 
 	# Fighters face each other: player left, enemy right, numbers under each.
 	_player_panel = FighterPanel.create("Player", false, true)
@@ -97,15 +93,17 @@ func _build() -> void:
 	_enemy_panel.position = ENEMY_PANEL_AT
 	add_child(_enemy_panel)
 
-	# AP and draw sit bottom-left, End Turn and discard bottom-right -- the
+	# Draw sits bottom-left, End Turn and discard bottom-right -- the AP
+	# readout moved into the player FighterPanel's icon cluster, and the
 	# combat log that used to occupy the centre band is gone, so the middle
 	# of the screen is free for the larger card fan.
-	_ap_label = _add_label("", AP_LABEL_AT, 24)
 	_draw_label = _add_label("", DRAW_LABEL_AT, 14)
+	HudText.style(_draw_label, 14)
 
 	_discard_label = _add_label("", DISCARD_LABEL_AT, 14)
 	_discard_label.size = DISCARD_LABEL_SIZE
 	_discard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	HudText.style(_discard_label, 14)
 
 	var end_turn := Button.new()
 	end_turn.text = "END TURN"
@@ -172,7 +170,7 @@ func update_intent(text: String) -> void:
 	_intent_label.text = "INTENT: %s" % text
 
 func update_ap(current: int, maximum: int) -> void:
-	_ap_label.text = "AP  %d / %d" % [current, maximum]
+	_player_panel.update_ap(current, maximum)
 
 func update_fighters(battle: BattleState) -> void:
 	_player_panel.update(battle.player)
@@ -188,13 +186,28 @@ func last_damage_amount() -> int:
 	var enemy_hit: int = _enemy_panel.debug_last_pulse_amount if _enemy_panel.debug_last_pulse_kind == &"damage" else 0
 	return maxi(player_hit, enemy_hit)
 
+## Which side the most recent fighter update hurt -- drives the portrait
+## flash/shake. Mirrors last_damage_amount()'s larger-pulse-wins rule.
+func last_damage_side() -> StringName:
+	var player_hit: int = _player_panel.debug_last_pulse_amount if _player_panel.debug_last_pulse_kind == &"damage" else 0
+	var enemy_hit: int = _enemy_panel.debug_last_pulse_amount if _enemy_panel.debug_last_pulse_kind == &"damage" else 0
+	if player_hit == 0 and enemy_hit == 0:
+		return &"none"
+	return &"player" if player_hit >= enemy_hit else &"enemy"
+
+func stage() -> FightStage:
+	return _stage
+
+func debug_player_panel() -> FighterPanel:
+	return _player_panel
+
 ## Anchor a played attack card flies toward.
 func enemy_centre() -> Vector2:
-	return _enemy_panel.centre_point()
+	return _stage.enemy_centre()
 
 ## Anchor a played Block card pulls back toward.
 func player_centre() -> Vector2:
-	return _player_panel.centre_point()
+	return _stage.player_centre()
 
 ## Pass-throughs so BattleView can mark the next fighters_changed update as a
 ## guard expiry rather than an absorption (see FighterPanel.

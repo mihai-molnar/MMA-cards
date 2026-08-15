@@ -8,6 +8,10 @@ func run(t: TestRunner) -> void:
 	_test_run_complete_banner(t)
 	_test_continue_signal_and_focus(t)
 	_test_enemy_name(t)
+	_test_stage_is_bottom_layer(t)
+	_test_lunge_anchors_are_portrait_centres(t)
+	_test_ap_routes_to_player_panel(t)
+	_test_last_damage_side(t)
 
 func _test_fight_intro_banner(t: TestRunner) -> void:
 	var hud := BattleHud.new()
@@ -47,4 +51,27 @@ func _test_enemy_name(t: TestRunner) -> void:
 	var hud := BattleHud.new()
 	hud.set_enemy_name("Kickboxer")
 	t.check_eq(hud.debug_enemy_panel().fighter_name(), "KICKBOXER", "the enemy panel shows the opponent's real name")
+	hud.free()
+
+func _test_stage_is_bottom_layer(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	t.check(hud.stage() != null, "the hud owns a FightStage")
+	t.check_eq(hud.get_child(0), hud.stage(), "the stage is the first child -- everything draws over it")
+	hud.free()
+
+func _test_lunge_anchors_are_portrait_centres(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	t.check_eq(hud.enemy_centre(), Vector2(864, 324), "attacks fly at the enemy portrait's centre")
+	t.check_eq(hud.player_centre(), Vector2(288, 324), "block pulls back to the player portrait's centre")
+	hud.free()
+
+func _test_ap_routes_to_player_panel(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	hud.update_ap(2, 3)
+	t.check_eq(hud.debug_player_panel().debug_ap_text(), "2 / 3", "AP renders inside the player's bolt icon")
+	hud.free()
+
+func _test_last_damage_side(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	t.check_eq(hud.last_damage_side(), &"none", "no update yet, no side")
 	hud.free()

@@ -79,6 +79,15 @@ func set_lunge_anchors(attack_anchor: Vector2, defend_anchor: Vector2) -> void:
 	_attack_anchor = attack_anchor
 	_defend_anchor = defend_anchor
 
+## Empties the hand immediately -- fight transitions call this so a dead
+## battle's cards aren't still fanned while the next fight's portraits slam.
+func clear() -> void:
+	for child: Node in get_children():
+		remove_child(child)
+		child.queue_free()
+	# Every child was just freed, so nothing is hovered and nothing is parted.
+	_hovered_view = null
+
 ## `deal` is true only when a genuinely new hand has arrived (BattleView passes
 ## it on turn_started). An ordinary hand_changed rebuild -- e.g. after playing
 ## a single card -- must default to false: without that, every play rebuilds
@@ -97,10 +106,7 @@ func rebuild(battle: BattleState, deal: bool = false) -> void:
 		var view: CardView = child as CardView
 		if view != null and view.card != null:
 			previous_positions[view.card] = view.target_position
-		remove_child(child)
-		child.queue_free()
-	# Every child was just freed, so nothing is hovered and nothing is parted.
-	_hovered_view = null
+	clear()
 
 	for index: int in range(battle.deck.hand.size()):
 		var view: CardView = CardView.create(battle.deck.hand[index])

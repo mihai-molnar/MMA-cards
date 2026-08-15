@@ -35,10 +35,27 @@ func _ready() -> void:
 ## opponent, seeded with the carried hp. The old BattleState (and its
 ## signal connections) is dropped with the reassignment -- deferred
 ## timers that fire afterwards re-read `battle` and see the new fight.
+## The stage slams first; battle.start() -- and with it the deal -- waits
+## for the collision to settle, so the fight opens on the impact, not
+## under it. Model state is never gated on animation: nothing exists to
+## input into until start() runs.
 func _start_fight() -> void:
-	battle = BattleState.new(0, run.current_opponent(), run.player_hp)
+	var opponent: OpponentData = run.current_opponent()
+	battle = BattleState.new(0, opponent, run.player_hp)
 	_connect_battle()
 	hud.set_enemy_name(battle.enemy.display_name)
+	hand_view.clear()
+	status_tooltip.hide_tooltip()
+	hud.stage().set_portraits(&"player", opponent.id)
+	hud.stage().slam_in(_on_slam_impact, _on_slam_settled)
+
+## The collision frame: the metal-plates hit the user asked for.
+func _on_slam_impact() -> void:
+	screen_fx.hit_stop(Juice.SLAM_HIT_STOP)
+	screen_fx.shake(Juice.SLAM_SHAKE_AMPLITUDE)
+	screen_fx.flash()
+
+func _on_slam_settled() -> void:
 	battle.start()
 
 func _build_ui() -> void:
@@ -166,6 +183,9 @@ func _land_fighter_update() -> void:
 	var amount: int = hud.last_damage_amount()
 	if amount > 0:
 		_fire_impact(amount)
+		var side: StringName = hud.last_damage_side()
+		hud.stage().flash_hit(side)
+		hud.stage().shake(side, Juice.portrait_shake_amplitude(amount))
 
 func _fire_impact(amount: int) -> void:
 	# Both the freeze and the kick scale with the damage that landed, so a

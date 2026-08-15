@@ -131,13 +131,13 @@ func _test_clear_hover(t: TestRunner) -> void:
 ## rightmost card's true edge at End Turn's row (HandView.
 ## rotated_right_edge_at_y, evaluated at BattleHud.END_TURN_AT.y) holds
 ## clear only up to n=5 (~967, 18px slack); n=6 would reach ~1037 and
-## overlap it. The mirrored left-edge check against the AP label tells the
-## same story on that side: n=5 leaves ~73px of slack (182 vs the label's
-## ~109px worst-case right edge), but n=6 would reach only ~112 -- just 3px
-## clear of that same ~109. Both are exactly why HAND_SIZE's ceiling stays
-## at 5 (see _test_hand_size_ceiling). Both invariants below are asserted
-## across every hand size the game can actually deal, not just the
-## five-card case above, so a future change to HAND_SIZE or the arc
+## overlap it. The mirrored left-edge check against the draw-pile label
+## (retargeted from the now-deleted AP text label, which used to sit at this
+## same corner -- the AP readout moved into the FighterPanel's icon cluster)
+## tells the same story on that side. Both are exactly why HAND_SIZE's
+## ceiling stays at 5 (see _test_hand_size_ceiling). Both invariants below
+## are asserted across every hand size the game can actually deal, not just
+## the five-card case above, so a future change to HAND_SIZE or the arc
 ## constants trips a test instead of silently breaking a corner control or
 ## clipping the bottom of the design space.
 func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
@@ -145,9 +145,11 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 		&"jab", &"straight", &"jab", &"block", &"straight"
 	]
 	var font: Font = ThemeDB.fallback_font
-	var ap_right_edge: float = BattleHud.AP_LABEL_AT.x + font.get_string_size(
-		"AP  %d / %d" % [BattleConfig.AP_PER_TURN, BattleConfig.AP_PER_TURN],
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+	var deck_total: int = 0
+	for copies: int in BattleConfig.DECK_COMPOSITION.values():
+		deck_total += copies
+	var draw_right_edge: float = BattleHud.DRAW_LABEL_AT.x + font.get_string_size(
+		"draw %d" % deck_total, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 
 	for n: int in range(1, 6):
 		var ids: Array = pool.slice(0, n)
@@ -164,10 +166,10 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 		var leftmost: CardView = view.get_child(0) as CardView
 		var left_edge: float = HandView.rotated_left_edge_at_y(
 			leftmost.rest_position.x, leftmost.rest_position.y, leftmost.rest_rotation,
-			BattleHud.AP_LABEL_AT.y)
-		t.check(left_edge > ap_right_edge,
-			"hand of %d clears the AP label (left edge %f, label right edge %f)" % [
-				n, left_edge, ap_right_edge])
+			BattleHud.DRAW_LABEL_AT.y)
+		t.check(left_edge > draw_right_edge,
+			"hand of %d clears the draw label (left edge %f, label right edge %f)" % [
+				n, left_edge, draw_right_edge])
 
 		# Regression guard for the bottom-clip fix: a card's rotated bottom
 		# corner (approximated using the maximum fan angle) must stay inside
