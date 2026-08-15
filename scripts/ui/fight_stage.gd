@@ -37,9 +37,17 @@ func _init() -> void:
 
 	_background = TextureRect.new()
 	_background.texture = CardArt.background_for(&"octagon")
-	_background.size = DESIGN_SIZE
+	# expand_mode must be set BEFORE size: Control.set_size() clamps against
+	# get_minimum_size(), and the default expand_mode (EXPAND_KEEP_SIZE)
+	# reports the source PNG's own pixel size (1086x1448) as that minimum.
+	# Assigning `.size` first silently clamped the background's height back
+	# up to 1448 instead of the intended 648 (confirmed by probing the exact
+	# sequence headless -- same bug, same fix as FighterPanel._make_icon).
+	# Harmless here only by accident: the extra height falls below the
+	# visible canvas rather than corrupting a number inside a window.
 	_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_background.size = DESIGN_SIZE
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background)
 

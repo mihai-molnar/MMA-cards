@@ -141,10 +141,18 @@ func _build() -> void:
 func _make_icon(icon_name: StringName, at: Vector2, icon_size: float) -> TextureRect:
 	var icon := TextureRect.new()
 	icon.texture = CardArt.ui_icon_for(icon_name)
-	icon.position = at
-	icon.size = Vector2.ONE * icon_size
+	# expand_mode must be set BEFORE position/size: Control.set_size() clamps
+	# against get_minimum_size(), and TextureRect's default expand_mode
+	# (EXPAND_KEEP_SIZE) reports the texture's own pixel size as that
+	# minimum. Assigning `.size` first (as this used to) silently clamped
+	# the icon back up to the source PNG's native 1254x1254 -- confirmed by
+	# probing the exact sequence headless: `.size` read back as (1254, 1254)
+	# with this order reversed, (72, 72) with expand_mode set first. Setting
+	# expand_mode first makes the minimum size 0, so size sticks.
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.position = at
+	icon.size = Vector2.ONE * icon_size
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_icon_cluster.add_child(icon)
 	return icon
