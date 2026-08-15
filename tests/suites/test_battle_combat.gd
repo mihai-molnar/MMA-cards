@@ -122,25 +122,29 @@ func _test_combo_history_clears_across_turns(t: TestRunner) -> void:
 
 func _test_buff_timing_across_turns(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
-	# Enemy cycle: turn 1 attack, turn 2 block, turn 3 buff, turn 4 attack.
-	battle.end_turn()   # enemy attacks for 8
-	t.check_eq(battle.player.hp, 42, "the enemy's opening attack deals 8")
+	# Brawler cycle: 1 ATTACK, 2 ATTACK+BLOCK, 3 BLOCK+BUFF, then wraps.
+	battle.end_turn()   # ATTACK 8
+	t.check_eq(battle.player.hp, 42, "the brawler's opening attack deals 8")
 
-	battle.end_turn()   # enemy blocks
-	t.check_eq(battle.player.hp, 42, "a blocking enemy deals no damage")
+	battle.end_turn()   # ATTACK 8 + BLOCK 8
+	t.check_eq(battle.player.hp, 34, "the second turn's attack also lands for 8")
+	t.check_eq(battle.enemy.guard, 8, "the second turn also raises 8 guard")
 
-	battle.end_turn()   # enemy buffs
-	t.check_eq(battle.enemy.statuses.get_stacks(StrengthStatus.ID), 2, "the enemy holds 2 strength after buffing")
+	battle.end_turn()   # BLOCK 8 + BUFF +2 STR
+	t.check_eq(battle.player.hp, 34, "the block-and-buff turn deals no damage")
+	t.check_eq(battle.enemy.statuses.get_stacks(StrengthStatus.ID), 2, "the brawler holds 2 strength after buffing")
 	t.check_eq(battle.brain.intent_text(battle.enemy, battle.player), "ATTACK 12", "the telegraph warns of a 12 damage attack")
 
-	battle.end_turn()   # enemy attacks, buffed
-	t.check_eq(battle.player.hp, 30, "the buffed attack deals 12")
+	battle.end_turn()   # ATTACK, buffed: 12
+	t.check_eq(battle.player.hp, 22, "the buffed attack deals 12")
 	t.check_eq(battle.enemy.statuses.get_stacks(StrengthStatus.ID), 0, "strength expires after the attack it paid for")
 
-	battle.end_turn()   # enemy blocks
-	battle.end_turn()   # enemy buffs
-	battle.end_turn()   # enemy attacks buffed again
-	t.check_eq(battle.player.hp, 30 - 12, "the next cycle's buffed attack also deals 12")
+	battle.end_turn()   # ATTACK 8 + BLOCK, unbuffed again
+	t.check_eq(battle.player.hp, 14, "the following attack is back to a plain 8")
+
+	battle.end_turn()   # BLOCK + BUFF
+	battle.end_turn()   # ATTACK, buffed again
+	t.check_eq(battle.player.hp, 2, "the next cycle's buffed attack also deals 12")
 
 func _test_win(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()

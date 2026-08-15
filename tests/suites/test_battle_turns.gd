@@ -73,8 +73,8 @@ func _test_player_guard_timing(t: TestRunner) -> void:
 
 func _test_enemy_guard_timing(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
-	battle.end_turn()   # enemy attacks, now intends to block
-	battle.end_turn()   # enemy blocks -> gains 8 guard
+	battle.end_turn()   # brawler turn 1: ATTACK
+	battle.end_turn()   # brawler turn 2: ATTACK + BLOCK -> gains 8 guard
 	t.check_eq(battle.enemy.guard, 8, "the enemy has guard up during the player's turn")
 
 	battle.deck.hand = [CardLibrary.load_card(&"jab")] as Array[CardData]
@@ -82,8 +82,11 @@ func _test_enemy_guard_timing(t: TestRunner) -> void:
 	t.check_eq(battle.enemy.guard, 2, "the enemy's guard absorbs the jab")
 	t.check_eq(battle.enemy.hp, 48, "the enemy takes no hp damage behind guard")
 
-	battle.end_turn()
-	t.check_eq(battle.enemy.guard, 0, "enemy guard clears at the start of its next turn")
+	battle.end_turn()   # brawler turn 3: BLOCK + BUFF
+	# 8, not 10: the leftover 2 guard expired at the enemy's own turn start
+	# (guard never survives into its owner's next turn) before turn 3's
+	# fresh block landed. 10 here would mean expiry silently stopped.
+	t.check_eq(battle.enemy.guard, 8, "expiry cleared the leftover guard before the fresh block landed")
 
 ## restart() touches two Fighters, the Deck, the EnemyBrain, and is_over —
 ## _test_turn_counter above only ever checked turn_number. Drive every one
@@ -91,11 +94,11 @@ func _test_enemy_guard_timing(t: TestRunner) -> void:
 ## them back.
 func _test_restart_resets_full_state(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
-	battle.end_turn()   # enemy attacks; brain now intends BLOCK
-	battle.end_turn()   # enemy blocks; brain now intends BUFF
+	battle.end_turn()   # brawler turn 1: ATTACK
+	battle.end_turn()   # brawler turn 2: ATTACK + BLOCK
 
 	t.check(battle.turn_number > 1, "several turns passed before restart")
-	t.check_eq(battle.brain.current_action, EnemyBrain.Action.BUFF, "the enemy brain advanced past ATTACK before restart")
+	t.check_eq(battle.brain.rotation_index(), 2, "the enemy brain advanced past its opening turn before restart")
 
 	# Push both fighters into a damaged, guarded, buffed state right before
 	# restarting, so restart() is what has to undo it, not natural expiry.
@@ -120,6 +123,6 @@ func _test_restart_resets_full_state(t: TestRunner) -> void:
 	t.check_eq(battle.ap, BattleConfig.AP_PER_TURN, "restart resets AP to 3")
 	t.check_eq(battle.deck.hand.size(), BattleConfig.HAND_SIZE, "restart deals a fresh hand of 5")
 	t.check_eq(battle.deck.total_cards(), 14, "restart preserves the 14-card deck total")
-	t.check_eq(battle.brain.current_action, EnemyBrain.Action.ATTACK, "restart returns the enemy brain to ATTACK")
+	t.check_eq(battle.brain.rotation_index(), 0, "restart returns the enemy brain to the top of its rotation")
 	t.check(not battle.is_over, "restart clears is_over")
 	t.check_eq(battle.turn_number, 1, "restart returns to turn 1")

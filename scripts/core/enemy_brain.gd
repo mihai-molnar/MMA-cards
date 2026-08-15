@@ -1,55 +1,42 @@
 class_name EnemyBrain
 extends RefCounted
 
-## A fixed attack -> block -> buff cycle. The next action is always known, so
-## the player can read it before committing to a turn.
+## Steps through an OpponentData's fixed rotation. The current turn is
+## always known, so the player can read the telegraph before committing.
 ##
-## Actions are built from the same CardEffect classes the player's cards use —
-## the enemy has no separate combat path.
+## The rotation's OpponentMoves carry ONE CardEffect instance each, reused
+## every cycle -- legal because CardEffect.apply() mutates only the fighters
+## and the context, never the effect itself.
 
-enum Action { ATTACK, BLOCK, BUFF }
-
-const CYCLE: Array = [Action.ATTACK, Action.BLOCK, Action.BUFF]
-
-var current_action: Action = Action.ATTACK
+var opponent: OpponentData
 
 var _index: int = 0
 
+func _init(p_opponent: OpponentData) -> void:
+	opponent = p_opponent
+
 func advance() -> void:
-	_index = (_index + 1) % CYCLE.size()
-	current_action = CYCLE[_index]
+	_index = (_index + 1) % opponent.rotation.size()
 
 func reset() -> void:
 	_index = 0
-	current_action = CYCLE[0]
+
+func rotation_index() -> int:
+	return _index
+
+func current_moves() -> Array:
+	return opponent.rotation[_index]
 
 func build_effects() -> Array[CardEffect]:
 	var effects: Array[CardEffect] = []
-	match current_action:
-		Action.ATTACK:
-			var damage := DamageEffect.new()
-			damage.amount = BattleConfig.BRAWLER_ATTACK_DAMAGE
-			effects.append(damage)
-		Action.BLOCK:
-			var guard := GuardEffect.new()
-			guard.amount = BattleConfig.BRAWLER_GUARD_AMOUNT
-			effects.append(guard)
-		Action.BUFF:
-			var buff := ApplyStatusEffect.new()
-			buff.status_id = StrengthStatus.ID
-			buff.stacks = BattleConfig.BRAWLER_BUFF_STRENGTH
-			buff.turns = BattleConfig.BRAWLER_BUFF_DURATION
-			buff.target_self = true
-			effects.append(buff)
+	for move: OpponentMove in current_moves():
+		effects.append_array(move.effects)
 	return effects
 
-## ASCII only — the default font has no glyphs for sword/shield symbols.
+## ASCII only -- the default font has no glyphs for sword/shield symbols.
+## Multi-move turns join with " + ": "ATTACK 8 + BLOCK 8".
 func intent_text(enemy: Fighter, target: Fighter) -> String:
-	match current_action:
-		Action.ATTACK:
-			return "ATTACK %d" % Combat.preview_damage(BattleConfig.BRAWLER_ATTACK_DAMAGE, enemy, target)
-		Action.BLOCK:
-			return "BLOCK %d" % BattleConfig.BRAWLER_GUARD_AMOUNT
-		Action.BUFF:
-			return "BUFF +%d STR" % BattleConfig.BRAWLER_BUFF_STRENGTH
-	return "?"
+	var parts: PackedStringArray = PackedStringArray()
+	for move: OpponentMove in current_moves():
+		parts.append(move.intent_text(enemy, target))
+	return " + ".join(parts)

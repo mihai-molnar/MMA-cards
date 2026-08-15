@@ -31,12 +31,21 @@ var _combo_rules: Array[ComboRule] = []
 var _play_history: Array[CardData] = []
 var _rng_seed: int = 0
 
-func _init(rng_seed: int = 0) -> void:
+## `opponent` null means the first opponent of the run -- every pre-run call
+## site (and test) that wrote BattleState.new() or BattleState.new(seed)
+## keeps working and keeps fighting the brawler. `starting_hp <= 0` means
+## full hp; a run passes the carried hp here. Note restart() returns the
+## player to FULL hp regardless of starting_hp -- only tests call it; the
+## run flow builds a fresh BattleState per fight instead.
+func _init(rng_seed: int = 0, opponent: OpponentData = null, starting_hp: int = -1) -> void:
 	_rng_seed = rng_seed
+	var chosen: OpponentData = opponent if opponent != null else OpponentLibrary.opponent(BattleConfig.RUN_OPPONENTS[0])
 	player = Fighter.new("Player", BattleConfig.PLAYER_MAX_HP)
-	enemy = Fighter.new("Enemy", BattleConfig.BRAWLER_MAX_HP)
+	if starting_hp > 0:
+		player.hp = mini(starting_hp, BattleConfig.PLAYER_MAX_HP)
+	enemy = Fighter.new(chosen.display_name, chosen.max_hp)
 	deck = Deck.new(CardLibrary.build_starting_deck(), rng_seed)
-	brain = EnemyBrain.new()
+	brain = EnemyBrain.new(chosen)
 	_combo_rules = [ComboRule.jab_straight()] as Array[ComboRule]
 
 func start() -> void:
