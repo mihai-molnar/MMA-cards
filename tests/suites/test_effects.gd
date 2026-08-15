@@ -7,6 +7,9 @@ func run(t: TestRunner) -> void:
 	_test_bonus_consumed_once(t)
 	_test_guard_effect(t)
 	_test_apply_status_effect(t)
+	_test_require_hp_damage_blocks_on_full_block(t)
+	_test_require_hp_damage_applies_on_partial_block(t)
+	_test_require_hp_damage_blocks_with_no_preceding_result(t)
 	_test_card_data(t)
 
 func _new_context(bonus: int) -> Dictionary:
@@ -66,6 +69,64 @@ func _test_apply_status_effect(t: TestRunner) -> void:
 	opponent_effect.turns = 2
 	opponent_effect.target_self = false
 	t.check_eq(opponent_effect.describe(), "Apply 2 STR.", "a target-directed status describes itself as an apply")
+
+## A fully-blocked kick lands no hp damage, so require_hp_damage must fail
+## the status closed: a kicked-but-guarded fighter's leg never gets hurt.
+func _test_require_hp_damage_blocks_on_full_block(t: TestRunner) -> void:
+	var kicker := Fighter.new("Kicker", 50)
+	var blocker := Fighter.new("Blocker", 48)
+	var context: Dictionary = _new_context(0)
+	context["results"].append(Combat.DamageResult.new(5, 5, 0))
+
+	var effect := ApplyStatusEffect.new()
+	effect.status_id = LegInjuryStatus.ID
+	effect.stacks = 1
+	effect.turns = 1
+	effect.target_self = false
+	effect.require_hp_damage = true
+	effect.apply(kicker, blocker, context)
+
+	t.check(not blocker.statuses.has(LegInjuryStatus.ID),
+		"a fully blocked kick applies no injury")
+	t.check(context["log"].back().contains("blocks the"),
+		"a blocked application logs that the status was blocked")
+
+## A partial block still lets some hp damage through, so the status must
+## still land.
+func _test_require_hp_damage_applies_on_partial_block(t: TestRunner) -> void:
+	var kicker := Fighter.new("Kicker", 50)
+	var blocker := Fighter.new("Blocker", 48)
+	var context: Dictionary = _new_context(0)
+	context["results"].append(Combat.DamageResult.new(5, 2, 3))
+
+	var effect := ApplyStatusEffect.new()
+	effect.status_id = LegInjuryStatus.ID
+	effect.stacks = 1
+	effect.turns = 1
+	effect.target_self = false
+	effect.require_hp_damage = true
+	effect.apply(kicker, blocker, context)
+
+	t.check(blocker.statuses.has(LegInjuryStatus.ID),
+		"a partially blocked kick still lands the injury")
+
+## No preceding DamageEffect result at all -- fail closed, same as a full
+## block, rather than applying by default.
+func _test_require_hp_damage_blocks_with_no_preceding_result(t: TestRunner) -> void:
+	var kicker := Fighter.new("Kicker", 50)
+	var blocker := Fighter.new("Blocker", 48)
+	var context: Dictionary = _new_context(0)
+
+	var effect := ApplyStatusEffect.new()
+	effect.status_id = LegInjuryStatus.ID
+	effect.stacks = 1
+	effect.turns = 1
+	effect.target_self = false
+	effect.require_hp_damage = true
+	effect.apply(kicker, blocker, context)
+
+	t.check(not blocker.statuses.has(LegInjuryStatus.ID),
+		"an empty results list fails closed -- no application")
 
 func _test_card_data(t: TestRunner) -> void:
 	var card := CardData.new()

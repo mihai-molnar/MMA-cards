@@ -19,7 +19,7 @@ const DISPLAY_NAME: String = "Leg Injury"
 const SHOW_TURNS: bool = true
 
 static func description() -> String:
-	return "Attacks deal %d%% less damage." % roundi(
+	return "Attacks deal %d%% less damage. Only applied when the kick deals damage past guard." % roundi(
 		(1.0 - BattleConfig.LEG_INJURY_DAMAGE_MULT) * 100.0)
 
 static func modify_outgoing_damage(amount: int, stacks: int) -> int:

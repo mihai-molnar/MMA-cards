@@ -74,7 +74,7 @@ func _make_low_kick() -> CardData:
 	# "Leg Injury" is a KEYWORD: CardTemplate colours it yellow and the hover
 	# tooltip explains what it does, so the card itself stays short -- the
 	# mechanics (50% weaker attacks) live in the status description, not here.
-	card.rules_text = "Deal %d damage. Causes Leg Injury for %d turn." % [
+	card.rules_text = "Deal %d damage. If unblocked, causes Leg Injury for %d turn." % [
 		BattleConfig.LOW_KICK_DAMAGE, BattleConfig.LEG_INJURY_TURNS]
 	var damage := DamageEffect.new()
 	damage.amount = BattleConfig.LOW_KICK_DAMAGE
@@ -85,6 +85,8 @@ func _make_low_kick() -> CardData:
 	injury.target_self = false
 	# A second kick keeps the leg hurt a turn longer, not hurt twice as much.
 	injury.extend_duration = true
+	# A fully blocked kick lands no hp damage, so it injures nothing.
+	injury.require_hp_damage = true
 	card.effects = [damage, injury] as Array[CardEffect]
 	return card
 

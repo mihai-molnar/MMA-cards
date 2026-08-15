@@ -223,15 +223,20 @@ static func _number_color(text: String, at: int, fallback: Color) -> Variant:
 	if end == -1:
 		end = text.length()
 	var sentence: String = text.substr(start, end - start)
-	var lowered: String = sentence.to_lower()
-	if lowered.contains("damage"):
+	if _sentence_names_word(sentence, "damage"):
 		return RULES_DAMAGE_COLOR
-	if lowered.contains("guard") or lowered.contains("block"):
+	if _sentence_names_word(sentence, "guard") or _sentence_names_word(sentence, "block"):
 		return RULES_GUARD_COLOR
 	for id: StringName in StatusRegistry.DEFINITIONS:
 		if _keyword_pattern(id).search(sentence) != null:
 			return null
 	return fallback
+
+## Word-bounded, case-insensitive substring test -- NOT String.contains(),
+## which would match "block" inside "unblocked" and misclassify a duration
+## number (Low Kick's "If unblocked, causes...") as a guard number.
+static func _sentence_names_word(sentence: String, word: String) -> bool:
+	return RegEx.create_from_string("(?i)\\b%s\\b" % word).search(sentence) != null
 
 ## Converts a normalized zone to a pixel rect against a card of `size`.
 static func to_pixels(zone: Rect2, size: Vector2) -> Rect2:

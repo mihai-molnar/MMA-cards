@@ -12,6 +12,7 @@ func run(t: TestRunner) -> void:
 	_test_type_text_follows_the_variant(t)
 	_test_rules_bbcode_colors_numbers(t)
 	_test_rules_bbcode_colors_status_keywords(t)
+	_test_rules_bbcode_word_boundary_ignores_block_inside_unblocked(t)
 	_test_keywords_are_found_by_word_boundary(t)
 	_test_pixel_conversion(t)
 
@@ -156,14 +157,26 @@ func _test_rules_bbcode_colors_numbers(t: TestRunner) -> void:
 
 ## Status names are KEYWORDS: rendered yellow (the tooltip explains them on
 ## hover), while a number in a status sentence stays plain -- the 1 in
-## "for 1 turn" is a duration, and painting it damage-red would lie.
+## "for 1 turn" is a duration, and painting it damage-red (or guard-blue)
+## would lie.
 func _test_rules_bbcode_colors_status_keywords(t: TestRunner) -> void:
 	var damage_hex: String = CardTemplate.RULES_DAMAGE_COLOR.to_html(false)
 	var keyword_hex: String = CardTemplate.RULES_KEYWORD_COLOR.to_html(false)
 	t.check_eq(CardTemplate.rules_bbcode(CardLibrary.load_card(&"low_kick")),
-		"Deal [color=#%s]2[/color] damage. Causes [color=#%s]Leg Injury[/color] for 1 turn." % [
+		"Deal [color=#%s]2[/color] damage. If unblocked, causes [color=#%s]Leg Injury[/color] for 1 turn." % [
 			damage_hex, keyword_hex],
 		"low kick colours its damage red, its keyword yellow, and its duration not at all")
+
+## "unblocked" contains "block" as a substring -- a plain String.contains()
+## sentence classifier would misread the duration's sentence as a guard
+## sentence and paint "1" blue. The classifier must be word-bounded, exactly
+## like the keyword matcher just below.
+func _test_rules_bbcode_word_boundary_ignores_block_inside_unblocked(t: TestRunner) -> void:
+	var card := CardData.new()
+	card.rules_text = "If unblocked, deals 1 extra."
+	t.check(not CardTemplate.rules_bbcode(card).contains("[color=#%s]1[/color]" % [
+		CardTemplate.RULES_GUARD_COLOR.to_html(false)]),
+		"'unblocked' must not be read as naming guard/block")
 
 ## What the tooltip needs from a card: which registered statuses its text
 ## names. Word-bounded, so STR never fires inside STRAIGHT.

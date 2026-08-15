@@ -9,6 +9,8 @@ func run(t: TestRunner) -> void:
 	_test_buff_timing_across_turns(t)
 	_test_low_kick_weakens_the_telegraphed_attack(t)
 	_test_low_kicks_stack_duration(t)
+	_test_low_kick_fully_blocked_applies_no_injury(t)
+	_test_kick_into_guard_applies_no_injury(t)
 	_test_kickboxer_leg_kick_halves_the_players_next_turn(t)
 	_test_kickboxer_injury_halves_combo_total(t)
 	_test_win(t)
@@ -75,6 +77,33 @@ func _test_low_kicks_stack_duration(t: TestRunner) -> void:
 	battle.end_turn()
 	t.check(not battle.enemy.statuses.has(&"leg_injury"),
 		"the extended injury expires after the second enemy turn")
+
+## A fully-blocked kick injures nothing: guard survives the opponent's turn
+## (it expires at the owner's own turn START), so Block played on turn 1
+## is still live when the kickboxer's opening LEG KICK lands.
+func _test_low_kick_fully_blocked_applies_no_injury(t: TestRunner) -> void:
+	var battle: BattleState = _new_kickboxer_battle()
+	_stack_hand(battle, [&"block"])
+	battle.play_card(0)
+	t.check_eq(battle.player.guard, BattleConfig.BLOCK_GUARD, "block raises its guard")
+
+	var hp_before: int = battle.player.hp
+	battle.end_turn()   # LEG KICK 5, fully absorbed by 5 guard
+	t.check_eq(battle.player.hp, hp_before, "the fully guarded leg kick deals no hp damage")
+	t.check(not battle.player.statuses.has(&"leg_injury"),
+		"a fully blocked leg kick applies no injury")
+
+## The mirror of the fix on the player's own Low Kick: kicking an opponent
+## who is holding enough guard to absorb it all injures nothing.
+func _test_kick_into_guard_applies_no_injury(t: TestRunner) -> void:
+	var battle: BattleState = _new_battle()
+	battle.enemy.add_guard(5)
+	_stack_hand(battle, [&"low_kick"])
+	battle.play_card(0)
+	t.check_eq(battle.enemy.guard, 5 - BattleConfig.LOW_KICK_DAMAGE,
+		"the kick's damage is absorbed by the enemy's guard")
+	t.check(not battle.enemy.statuses.has(&"leg_injury"),
+		"a low kick fully absorbed by guard injures nothing")
 
 func _new_kickboxer_battle() -> BattleState:
 	var battle := BattleState.new(12345, OpponentLibrary.opponent(&"kickboxer"))

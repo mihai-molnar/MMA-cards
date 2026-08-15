@@ -68,5 +68,8 @@ static func _leg_kick() -> OpponentMove:
 	injury.turns = BattleConfig.LEG_INJURY_TURNS
 	injury.target_self = false
 	injury.extend_duration = true
+	# Mirrors the player's Low Kick exactly: a fully blocked kick injures
+	# nothing.
+	injury.require_hp_damage = true
 	var effects: Array[CardEffect] = [damage, injury]
 	return OpponentMove.new("LEG KICK", effects)
