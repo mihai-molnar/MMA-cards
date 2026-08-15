@@ -9,6 +9,8 @@ func run(t: TestRunner) -> void:
 	_test_buff_timing_across_turns(t)
 	_test_low_kick_weakens_the_telegraphed_attack(t)
 	_test_low_kicks_stack_duration(t)
+	_test_kickboxer_leg_kick_halves_the_players_next_turn(t)
+	_test_kickboxer_injury_halves_combo_total(t)
 	_test_win(t)
 	_test_loss(t)
 	_test_no_intent_after_fatal_enemy_attack(t)
@@ -73,6 +75,47 @@ func _test_low_kicks_stack_duration(t: TestRunner) -> void:
 	battle.end_turn()
 	t.check(not battle.enemy.statuses.has(&"leg_injury"),
 		"the extended injury expires after the second enemy turn")
+
+func _new_kickboxer_battle() -> BattleState:
+	var battle := BattleState.new(12345, OpponentLibrary.opponent(&"kickboxer"))
+	battle.start()
+	return battle
+
+## The kickboxer's signature is the player's own Low Kick mirrored back:
+## the injury lands on the PLAYER, halves exactly one turn of the player's
+## attacks, and expires at the player's own turn end.
+func _test_kickboxer_leg_kick_halves_the_players_next_turn(t: TestRunner) -> void:
+	var battle: BattleState = _new_kickboxer_battle()
+	t.check_eq(battle.enemy.display_name, "Kickboxer", "fight 2's enemy fighter carries the kickboxer's name")
+	t.check_eq(battle.enemy.hp, 56, "the kickboxer starts at 56 hp")
+	t.check_eq(battle.brain.intent_text(battle.enemy, battle.player), "LEG KICK 5", "the kickboxer telegraphs the opening leg kick")
+
+	battle.end_turn()   # LEG KICK: 5 damage + Leg Injury on the player
+	t.check_eq(battle.player.hp, 45, "the leg kick lands for 5")
+	t.check(battle.player.statuses.has(&"leg_injury"), "the PLAYER is leg-injured")
+
+	_stack_hand(battle, [&"jab"])
+	battle.play_card(0)
+	t.check_eq(battle.enemy.hp, 53, "the injured jab deals floori(6 * 0.5) = 3")
+
+	battle.end_turn()   # player turn end ticks the injury away; enemy ATTACK 10
+	t.check(not battle.player.statuses.has(&"leg_injury"),
+		"the injury expires at the player's own turn end -- exactly one halved turn")
+	t.check_eq(battle.player.hp, 35, "the kickboxer's second turn attacks for 10")
+
+	_stack_hand(battle, [&"jab"])
+	battle.play_card(0)
+	t.check_eq(battle.enemy.hp, 47, "after expiry the jab is back to its full 6")
+
+## The combo bonus is added to base damage BEFORE modifiers, so the injury
+## halves the combined total: straight 9 + bonus 7 = 16 -> floori 8.
+func _test_kickboxer_injury_halves_combo_total(t: TestRunner) -> void:
+	var battle: BattleState = _new_kickboxer_battle()
+	battle.end_turn()   # LEG KICK -> the player is injured
+	_stack_hand(battle, [&"jab", &"straight"])
+	battle.play_card(0)   # injured jab: 3
+	battle.play_card(0)   # injured combo straight: floori((9 + 7) * 0.5) = 8
+	t.check_eq(battle.enemy.hp, 56 - 3 - 8, "the combo bonus lands before the injury halves the total")
 
 func _test_combo_integration(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
