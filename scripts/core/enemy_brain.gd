@@ -28,17 +28,17 @@ func build_effects() -> Array[CardEffect]:
 	match current_action:
 		Action.ATTACK:
 			var damage := DamageEffect.new()
-			damage.amount = BattleConfig.ENEMY_ATTACK_DAMAGE
+			damage.amount = BattleConfig.BRAWLER_ATTACK_DAMAGE
 			effects.append(damage)
 		Action.BLOCK:
 			var guard := GuardEffect.new()
-			guard.amount = BattleConfig.ENEMY_GUARD_AMOUNT
+			guard.amount = BattleConfig.BRAWLER_GUARD_AMOUNT
 			effects.append(guard)
 		Action.BUFF:
 			var buff := ApplyStatusEffect.new()
 			buff.status_id = StrengthStatus.ID
-			buff.stacks = BattleConfig.ENEMY_BUFF_STRENGTH
-			buff.turns = BattleConfig.ENEMY_BUFF_DURATION
+			buff.stacks = BattleConfig.BRAWLER_BUFF_STRENGTH
+			buff.turns = BattleConfig.BRAWLER_BUFF_DURATION
 			buff.target_self = true
 			effects.append(buff)
 	return effects
@@ -47,9 +47,9 @@ func build_effects() -> Array[CardEffect]:
 func intent_text(enemy: Fighter, target: Fighter) -> String:
 	match current_action:
 		Action.ATTACK:
-			return "ATTACK %d" % Combat.preview_damage(BattleConfig.ENEMY_ATTACK_DAMAGE, enemy, target)
+			return "ATTACK %d" % Combat.preview_damage(BattleConfig.BRAWLER_ATTACK_DAMAGE, enemy, target)
 		Action.BLOCK:
-			return "BLOCK %d" % BattleConfig.ENEMY_GUARD_AMOUNT
+			return "BLOCK %d" % BattleConfig.BRAWLER_GUARD_AMOUNT
 		Action.BUFF:
-			return "BUFF +%d STR" % BattleConfig.ENEMY_BUFF_STRENGTH
+			return "BUFF +%d STR" % BattleConfig.BRAWLER_BUFF_STRENGTH
 	return "?"

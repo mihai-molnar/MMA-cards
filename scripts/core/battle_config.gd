@@ -4,7 +4,6 @@ extends RefCounted
 ## Every tunable number in the game. Nothing else should hardcode balance values.
 
 const PLAYER_MAX_HP: int = 50
-const ENEMY_MAX_HP: int = 48
 const AP_PER_TURN: int = 3
 const HAND_SIZE: int = 5
 
@@ -32,11 +31,12 @@ const LEG_INJURY_TURNS: int = 1
 ## weight on the leg.
 const LEG_INJURY_DAMAGE_MULT: float = 0.5
 
-const ENEMY_ATTACK_DAMAGE: int = 8
-const ENEMY_GUARD_AMOUNT: int = 8
-const ENEMY_BUFF_STRENGTH: int = 2
+const BRAWLER_MAX_HP: int = 48
+const BRAWLER_ATTACK_DAMAGE: int = 8
+const BRAWLER_GUARD_AMOUNT: int = 8
+const BRAWLER_BUFF_STRENGTH: int = 2
 ## 2 turns means: live during the buff turn AND the following attack turn.
-const ENEMY_BUFF_DURATION: int = 2
+const BRAWLER_BUFF_DURATION: int = 2
 
 ## Combo bonus = floori(sum_of_base_damage * COMBO_BONUS_RATIO)
 const COMBO_BONUS_RATIO: float = 0.5
