@@ -20,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `724 checks, 0 failures` / `PASS`.
+on a clean tree ends with `774 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -297,9 +297,11 @@ the master template the same overbright warm push turns the neutral steel
 trim brass-gold — verified against the capture's armed/un-armed pair, it
 reads even more clearly than it did on gold.
 
-Frame and illustration `.import` files must keep `mipmaps/generate=true`.
+Frame, illustration, background, portrait and ui-icon `.import` files must
+keep `mipmaps/generate=true`.
 Cards draw at a 5x (frame) and 10x (illustration) downscale while swaying and
-rotating; without mipmaps that shimmers rather than merely softening.
+rotating, and the stage's portraits/BG/icons all draw well under native size;
+without mipmaps that shimmers rather than merely softening.
 Generating them is only half the requirement: mipmaps are SAMPLED only
 because `project.godot` sets
 `rendering/textures/canvas_textures/default_texture_filter=2` (Linear
@@ -328,6 +330,34 @@ If these two expiry points are ever merged into "the same moment," the game
 still runs and tests may still look plausible — check them explicitly.
 
 ## The presentation layer
+
+**The fight stage.** `FightStage` (`scripts/ui/fight_stage.gd`) is the HUD's
+bottom layer and owns all scenery: the octagon background, the two
+half-screen fighter portraits that ARE the scene, the fight-opening slam
+(both halves collide at the centre seam; `BattleView` hooks screenshake at
+`on_impact` and calls `battle.start()` only at `on_settled`, so the hand
+deals after the stage is at rest — the model is never gated on animation
+beyond that one deferred `start()`), and per-side hit feedback
+(`flash_hit`/`shake`, routed by `BattleView` from
+`BattleHud.last_damage_side()`). Portraits resolve by fighter id via
+`CardArt.portrait_for` (`assets/portraits/<id>.png` — the player is
+`player`, an opponent's id is its `OpponentData.id`, so a new opponent's
+portrait is one file). HP/AP icon frames are HUD chrome in `assets/ui/`,
+NOT `assets/icons/` (that directory stays reserved for status icons keyed
+by status id). `FighterPanel` no longer draws a rectangle: its face is the
+HP heart (value inside; centred until too wide, then anchored at the icon's
+centre growing rightward), the player-only AP bolt, a blue `+n` guard
+readout, and the status rows — while its hp/guard *diffing* brain, pulse
+decisions and `suppress_next_guard_pulse()` machinery survive unchanged.
+Every label drawn over the portraits is styled by `HudText.style` (Kreon,
+white fill, black outline — the fighting-game legibility standard).
+
+One Godot trap the stage taught: on a `TextureRect`, set `stretch_mode`/
+`expand_mode` BEFORE `position`/`size`. `Control.set_size()` clamps against
+`get_minimum_size()`, and the default `EXPAND_KEEP_SIZE` reports the source
+PNG's own pixel size as that minimum — assigning `.size` first silently
+snaps a 72px icon back to its native 1254px. The symptom is silent
+wrongness in the render; no test can see it (see "Verifying animation").
 
 Three rules govern `scripts/ui/`. Each of them has already been broken once,
 and in every case the symptom was *silent wrongness*, not a crash — which is
@@ -538,14 +568,13 @@ won during implementation and the spec was usually amended, but not always.
 ## State of the project
 
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
-fully art-directed, 724 headless checks. What is conspicuously still
-placeholder:
+fully art-directed down to the fight screen itself (portrait fight stage
+with a slam intro, icon readouts, outlined HUD text), 774 headless checks.
+What is conspicuously still placeholder:
 
-- **The fighters are flat coloured rectangles.** With painted cards on screen
-  they are now the only unfinished-looking element. `FighterPanel` would take
-  portrait art the same way `CardView` took card art.
 - **No sound.** Deliberately deferred from the juice pass — it needs audio
-  assets, and it is the single largest remaining contributor to game feel.
+  assets, and it is now BY FAR the largest remaining contributor to game
+  feel (the portrait slam visibly begs for an impact sound).
 - **No map, no deck-building, no card rewards.** The run is a fixed two-fight
   sequence; `RunState.current_opponent()` is the seam a branching map would
   replace.
