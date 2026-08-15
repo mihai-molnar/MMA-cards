@@ -40,12 +40,15 @@ func _run() -> void:
 	background.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(background)
 
-	# Two stacked rows since the library grew to four cards: the card row is
-	# now 860px of content (4 cards + 3 internal gaps), which no longer
+	# Two stacked rows since the library grew to four cards, plus a fifth
+	# preview card appended to the card row (see _add_row): the card row is
+	# now 1080px of content (5 cards + 4 internal gaps), which no longer
 	# leaves room for the 420px combo pair beside it inside the 1152-wide
-	# canvas (860 + 20 + 420 = 1300). Vertically both rows fit with margin:
-	# GAP + 300 + GAP + 300 = 640 against the 648-tall canvas -- 8px to
-	# spare, so keep GAP at 20 or re-check this arithmetic.
+	# canvas (1080 + 20 + 420 = 1520). Horizontally the card row alone still
+	# fits: GAP + 1080 = 1100 against the 1152-wide canvas -- 52px to spare.
+	# Vertically both rows fit with margin: GAP + 300 + GAP + 300 = 640
+	# against the 648-tall canvas -- 8px to spare, so keep GAP at 20 or
+	# re-check this arithmetic.
 	_add_row(Vector2(GAP, GAP))
 	_add_combo_row(Vector2(GAP, GAP + CardView.CARD_SIZE.y + GAP))
 
@@ -104,3 +107,20 @@ func _add_row(origin: Vector2) -> void:
 		view.target_position = Vector2(x, 0.0)
 		row.add_child(view)
 		x += CardView.CARD_SIZE.x + GAP
+
+	_add_injured_jab_preview(row, x)
+
+## A fifth card: the same Jab, but with update_rules_preview() called against
+## a leg-injured source fighter, so its printed damage shows the LIVE 3
+## (weakened orange) instead of the flat base 6 (plain damage red) the other
+## row-one cards render with. A throwaway Fighter pair -- update_rules_preview
+## only reads their statuses, so neither needs to join the scene tree.
+func _add_injured_jab_preview(row: Control, x: float) -> void:
+	var injured := Fighter.new("Injured", 50)
+	injured.statuses.apply(LegInjuryStatus.ID, 1, 3)
+	var target := Fighter.new("Target", 50)
+
+	var view: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	view.update_rules_preview(injured, target)
+	view.target_position = Vector2(x, 0.0)
+	row.add_child(view)

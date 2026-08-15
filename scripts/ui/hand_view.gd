@@ -230,7 +230,10 @@ static func rotated_left_edge_at_y(rect_x: float, card_y: float, rotation_rad: f
 	var frac: float = clampf((at_y - top_left.y) / (bottom_left.y - top_left.y), 0.0, 1.0)
 	return lerpf(top_left.x, bottom_left.x, frac)
 
-## Updates affordability dimming and combo highlights without rebuilding.
+## Updates affordability dimming, combo highlights and the live damage
+## preview without rebuilding. Runs on ap_changed / fighters_changed / every
+## rebuild, so a card's printed damage halves the instant Leg Injury lands
+## and recovers the instant it expires -- no extra signal wiring needed.
 func refresh_states(battle: BattleState) -> void:
 	for index: int in range(get_child_count()):
 		var view: CardView = get_child(index) as CardView
@@ -238,6 +241,7 @@ func refresh_states(battle: BattleState) -> void:
 			continue
 		view.set_affordable(battle.can_play(index))
 		view.set_combo_armed(battle.combo_bonus_for(index) > 0)
+		view.update_rules_preview(battle.player, battle.enemy)
 
 ## Hand parting: hovering a card shoves its neighbours aside so the hovered
 ## card has room to be read, Slay the Spire style. The offsets are additive

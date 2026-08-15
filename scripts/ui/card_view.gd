@@ -291,6 +291,17 @@ func _place_centred(control: Control, centre: Vector2, box: Vector2) -> void:
 	control.size = rect.size
 	control.position = rect.get_center() - control.size / 2.0
 
+## Re-renders the rules label from live fighters, so the printed number
+## reflects whatever modifiers currently apply (Leg Injury halving the
+## source's outgoing damage, for instance) instead of the card's flat base
+## value. The initial face composition in configure() keeps calling the
+## plain single-argument rules_bbcode(card); this is what HandView calls on
+## every refresh so the preview stays current as statuses come and go.
+func update_rules_preview(source: Fighter, target: Fighter) -> void:
+	if card == null:
+		return
+	_rules_label.text = CardTemplate.rules_bbcode(card, source, target)
+
 func set_affordable(value: bool) -> void:
 	disabled = not value
 	modulate.a = 1.0 if value else UNAFFORDABLE_ALPHA

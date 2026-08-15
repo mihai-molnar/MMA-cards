@@ -107,6 +107,11 @@ const RULES_COLOR: Color = Color(0.88, 0.87, 0.84)
 const RULES_DAMAGE_COLOR: Color = Color(1.00, 0.40, 0.33)
 const RULES_GUARD_COLOR: Color = Color(0.45, 0.72, 1.00)
 const RULES_KEYWORD_COLOR: Color = Color(1.00, 0.84, 0.35)
+## A damage number previewed BELOW its base value (the source is weakened,
+## e.g. Leg Injury) -- bruised orange, distinct from RULES_DAMAGE_COLOR red
+## at a glance so a halved hit reads as different from a plain one, not just
+## a smaller version of it.
+const RULES_WEAKENED_COLOR: Color = Color(0.95, 0.62, 0.30)
 
 const OUTLINE_SIZE: int = 4
 const OUTLINE_COLOR: Color = Color(0.05, 0.03, 0.02, 0.9)
@@ -147,33 +152,67 @@ static func rules_plain(card: CardData) -> String:
 ## variant, so the number still reads as what the card is. Markup adds no
 ## visible characters, so the label wraps exactly the string the wrap model
 ## measures.
-static func rules_bbcode(card: CardData) -> String:
+##
+## `source`/`target` are OPTIONAL and default to null: every existing caller
+## renders EXACTLY as before. Pass both to preview what the card would
+## actually hit for right now -- if the card has exactly one DamageEffect and
+## a damage-coloured number span equals that effect's base amount, the span
+## is replaced with Combat.preview_damage(amount, source, target), coloured
+## RULES_DAMAGE_COLOR when the preview equals or exceeds the base (a future
+## buff still reads as a plain hit) and RULES_WEAKENED_COLOR when it is
+## lower. Cards with zero or multiple DamageEffects, spans that don't match
+## the amount, or EITHER fighter left null (simplest safe fallback -- no
+## half-preview from one side's modifiers alone) render untouched, exactly as
+## today. Guard, duration and keyword spans are never previewed.
+static func rules_bbcode(card: CardData, source: Fighter = null, target: Fighter = null) -> String:
 	var plain: String = rules_plain(card)
 	var fallback: Color = RULES_GUARD_COLOR if variant_for(card) == DEFENSE \
 		else RULES_DAMAGE_COLOR
+	var preview_effect: DamageEffect = null
+	if source != null and target != null:
+		preview_effect = _sole_damage_effect(card)
 
-	# Every span to wrap, as [start, end, colour]. Numbers and keywords never
-	# overlap -- no registered status name contains a digit.
+	# Every span to wrap, as [start, end, text, colour]. Numbers and keywords
+	# never overlap -- no registered status name contains a digit.
 	var spans: Array = []
 	var number_pattern: RegEx = RegEx.create_from_string("[+\\-]?\\d+")
 	for found: RegExMatch in number_pattern.search_all(plain):
 		var color: Variant = _number_color(plain, found.get_start(), fallback)
-		if color != null:
-			spans.append([found.get_start(), found.get_end(), color])
+		if color == null:
+			continue
+		var span_text: String = plain.substr(found.get_start(), found.get_end() - found.get_start())
+		if preview_effect != null and color == RULES_DAMAGE_COLOR \
+				and span_text.to_int() == preview_effect.amount:
+			var preview: int = Combat.preview_damage(preview_effect.amount, source, target)
+			span_text = str(preview)
+			color = RULES_DAMAGE_COLOR if preview >= preview_effect.amount else RULES_WEAKENED_COLOR
+		spans.append([found.get_start(), found.get_end(), span_text, color])
 	for id: StringName in _keyword_ids():
 		for found: RegExMatch in _keyword_pattern(id).search_all(plain):
-			spans.append([found.get_start(), found.get_end(), RULES_KEYWORD_COLOR])
+			var text: String = plain.substr(found.get_start(), found.get_end() - found.get_start())
+			spans.append([found.get_start(), found.get_end(), text, RULES_KEYWORD_COLOR])
 
 	spans.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	var result: String = ""
 	var cursor: int = 0
 	for span: Array in spans:
 		result += plain.substr(cursor, span[0] - cursor)
-		result += "[color=#%s]%s[/color]" % [
-			(span[2] as Color).to_html(false), plain.substr(span[0], span[1] - span[0])]
+		result += "[color=#%s]%s[/color]" % [(span[3] as Color).to_html(false), span[2]]
 		cursor = span[1]
 	result += plain.substr(cursor)
 	return result
+
+## The card's single DamageEffect, or null if it has zero or more than one --
+## the live preview only ever replaces a number that unambiguously belongs to
+## exactly one effect.
+static func _sole_damage_effect(card: CardData) -> DamageEffect:
+	var found: DamageEffect = null
+	var count: int = 0
+	for effect: CardEffect in card.effects:
+		if effect is DamageEffect:
+			count += 1
+			found = effect as DamageEffect
+	return found if count == 1 else null
 
 ## Which keywords this card's text names -- what the hover tooltip explains
 ## and rules_bbcode colours yellow. Every registered status is a keyword;
