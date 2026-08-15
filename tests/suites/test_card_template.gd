@@ -4,6 +4,7 @@ const TestRunner := preload("res://tests/run_tests.gd")
 
 func run(t: TestRunner) -> void:
 	_test_variant_follows_the_defense_tag(t)
+	_test_frame_name_follows_the_variant(t)
 	_test_zones_are_normalized(t)
 	_test_window_zone_covers_the_frame_opening(t)
 	_test_rules_zone_is_centred_on_the_panel(t)
@@ -17,9 +18,12 @@ func run(t: TestRunner) -> void:
 ## are semi-transparent, so any opening pixel outside WINDOW_ZONE shows the
 ## background as a dark gap instead of art. The zone must therefore COVER the
 ## opening (with bleed), not merely trace it: this measures the bounding box
-## of every transparent pixel inside the card body on the master frame and
-## asserts the zone contains it. Overshoot is free -- the frame's opaque
-## paint covers whatever the illustration puts behind it.
+## of every transparent pixel inside the card body and asserts the zone
+## contains it -- on BOTH frames, because the defense frame is generated
+## from the master by recolour alone and the zones are shared: this is the
+## check that turns "the recolour moved no geometry" into an enforced fact.
+## Overshoot is free -- the frame's opaque paint covers whatever the
+## illustration puts behind it.
 func _test_window_zone_covers_the_frame_opening(t: TestRunner) -> void:
 	# The card body, excluding the frame's transparent outside-the-rounded-
 	# corners margin.
@@ -27,47 +31,60 @@ func _test_window_zone_covers_the_frame_opening(t: TestRunner) -> void:
 	const BODY_X1: float = 0.92
 	const BODY_Y0: float = 0.10
 	const BODY_Y1: float = 0.65
-	var image: Image = _frame_image()
-	var width: int = image.get_width()
-	var height: int = image.get_height()
-	var min_x: int = width
-	var max_x: int = -1
-	var min_y: int = height
-	var max_y: int = -1
-	for y: int in range(int(BODY_Y0 * height), int(BODY_Y1 * height)):
-		for x: int in range(int(BODY_X0 * width), int(BODY_X1 * width)):
-			if image.get_pixel(x, y).a < 0.10:
-				min_x = mini(min_x, x)
-				max_x = maxi(max_x, x)
-				min_y = mini(min_y, y)
-				max_y = maxi(max_y, y)
-	t.check(max_x >= 0, "the master frame has a transparent art opening")
-	if max_x < 0:
-		return
-	var zone: Rect2 = CardTemplate.WINDOW_ZONE
-	t.check(zone.position.x <= float(min_x) / width and zone.end.x >= float(max_x) / width,
-		"the window zone covers the opening horizontally (opening %.3f..%.3f)" % [
-			float(min_x) / width, float(max_x) / width])
-	t.check(zone.position.y <= float(min_y) / height and zone.end.y >= float(max_y) / height,
-		"the window zone covers the opening vertically (opening %.3f..%.3f)" % [
-			float(min_y) / height, float(max_y) / height])
+	for frame: StringName in [CardTemplate.FRAME, CardTemplate.DEFENSE_FRAME]:
+		var image: Image = _frame_image(frame)
+		var width: int = image.get_width()
+		var height: int = image.get_height()
+		var min_x: int = width
+		var max_x: int = -1
+		var min_y: int = height
+		var max_y: int = -1
+		for y: int in range(int(BODY_Y0 * height), int(BODY_Y1 * height)):
+			for x: int in range(int(BODY_X0 * width), int(BODY_X1 * width)):
+				if image.get_pixel(x, y).a < 0.10:
+					min_x = mini(min_x, x)
+					max_x = maxi(max_x, x)
+					min_y = mini(min_y, y)
+					max_y = maxi(max_y, y)
+		t.check(max_x >= 0, "the %s frame has a transparent art opening" % frame)
+		if max_x < 0:
+			continue
+		var zone: Rect2 = CardTemplate.WINDOW_ZONE
+		t.check(zone.position.x <= float(min_x) / width and zone.end.x >= float(max_x) / width,
+			"the window zone covers the %s opening horizontally (opening %.3f..%.3f)" % [
+				frame, float(min_x) / width, float(max_x) / width])
+		t.check(zone.position.y <= float(min_y) / height and zone.end.y >= float(max_y) / height,
+			"the window zone covers the %s opening vertically (opening %.3f..%.3f)" % [
+				frame, float(min_y) / height, float(max_y) / height])
 
 ## Rules text is centre-aligned, so it only LOOKS centred if the zone's own
 ## horizontal centre sits on the panel's visual centre. Measured from the
 ## painted pixels at the zone's top row, not hand-set, so a repainted
-## template moves this too.
+## template moves this too. Both frames, same reason as the window test.
 func _test_rules_zone_is_centred_on_the_panel(t: TestRunner) -> void:
-	var image: Image = _frame_image()
-	var y: int = int((CardTemplate.RULES_ZONE.position.y + 0.01) * image.get_height())
-	var run: Array = _widest_panel_run(image, y)
-	t.check(run[1] > run[0], "the rules panel has a full-width run at the zone top")
-	if run[1] <= run[0]:
-		return
-	var panel_centre: float = (run[0] + run[1]) / 2.0
-	var zone_centre: float = CardTemplate.RULES_ZONE.get_center().x
-	t.check(absf(zone_centre - panel_centre) < 0.02,
-		"the rules zone is centred on the panel (zone %.3f, panel %.3f)" % [
-			zone_centre, panel_centre])
+	for frame: StringName in [CardTemplate.FRAME, CardTemplate.DEFENSE_FRAME]:
+		var image: Image = _frame_image(frame)
+		var y: int = int((CardTemplate.RULES_ZONE.position.y + 0.01) * image.get_height())
+		var run: Array = _widest_panel_run(image, y)
+		t.check(run[1] > run[0], "the %s rules panel has a full-width run at the zone top" % frame)
+		if run[1] <= run[0]:
+			continue
+		var panel_centre: float = (run[0] + run[1]) / 2.0
+		var zone_centre: float = CardTemplate.RULES_ZONE.get_center().x
+		t.check(absf(zone_centre - panel_centre) < 0.02,
+			"the %s rules zone is centred on the panel (zone %.3f, panel %.3f)" % [
+				frame, zone_centre, panel_centre])
+
+## The defense frame is the master recoloured, not the master reused: the
+## two variants must resolve to two DIFFERENT frame names, and each name to
+## its own texture, or defense cards silently wear attack red again.
+func _test_frame_name_follows_the_variant(t: TestRunner) -> void:
+	t.check_eq(CardTemplate.frame_name(CardTemplate.ATTACK), CardTemplate.FRAME,
+		"the attack variant wears the master frame")
+	t.check_eq(CardTemplate.frame_name(CardTemplate.DEFENSE), CardTemplate.DEFENSE_FRAME,
+		"the defense variant wears the blue-accented frame")
+	t.check(CardTemplate.FRAME != CardTemplate.DEFENSE_FRAME,
+		"the two frame names are actually different")
 
 func _test_variant_follows_the_defense_tag(t: TestRunner) -> void:
 	# Tag-driven, so a new card needs no registration here. The variant no
@@ -173,8 +190,8 @@ const CARD_SIZE: Vector2 = Vector2(200.0, 300.0)
 ## the model drifts from the rendered one.
 const LINE_SPACING: float = 0.0
 
-func _frame_image() -> Image:
-	return (load("res://assets/frames/%s.png" % CardTemplate.FRAME) as Texture2D).get_image()
+func _frame_image(frame: StringName) -> Image:
+	return (load("res://assets/frames/%s.png" % frame) as Texture2D).get_image()
 
 func _rules_font() -> Font:
 	return CardTemplate.FONT if CardTemplate.FONT != null else ThemeDB.fallback_font
@@ -228,11 +245,13 @@ func _test_rules_lines_fit_the_painted_panel(t: TestRunner) -> void:
 	# anything being unreadable -- this forgives raster noise, not a line
 	# genuinely off the panel.
 	const EDGE_TOLERANCE: float = 0.03
-	var image: Image = _frame_image()
-	var height: int = image.get_height()
 
 	for card_id: StringName in [&"jab", &"straight", &"block"]:
 		var card: CardData = CardLibrary.load_card(card_id)
+		# Each card is checked against the frame it actually wears.
+		var image: Image = _frame_image(
+			CardTemplate.frame_name(CardTemplate.variant_for(card)))
+		var height: int = image.get_height()
 		var zone_width_px: float = CardTemplate.RULES_ZONE.size.x * CARD_SIZE.x
 		var rects: Array[Rect2] = _line_rects(
 			_wrapped_lines(CardTemplate.rules_plain(card), zone_width_px))

@@ -16,10 +16,12 @@ func _test_illustrations_load(t: TestRunner) -> void:
 
 func _test_frames_load(t: TestRunner) -> void:
 	# The frame is looked up by name, not per card, which is what lets a new
-	# card ship with only an illustration. There is exactly one frame now --
-	# the master template every card wears.
+	# card ship with only an illustration. Two frames exist: the master and
+	# its blue-accented defense recolour.
 	t.check(CardArt.frame_for(CardTemplate.FRAME) != null,
 		"the master template frame resolves to a texture")
+	t.check(CardArt.frame_for(CardTemplate.DEFENSE_FRAME) != null,
+		"the defense frame resolves to a texture")
 
 func _test_missing_illustration_returns_null(t: TestRunner) -> void:
 	# A card authored before its art exists is a legitimate state -- it renders

@@ -244,11 +244,12 @@ func configure(p_card: CardData) -> void:
 	card = p_card
 	if card == null:
 		return
-	_frame.texture = CardArt.frame_for(CardTemplate.FRAME)
+	var variant: StringName = CardTemplate.variant_for(card)
+	_frame.texture = CardArt.frame_for(CardTemplate.frame_name(variant))
 	_illustration.texture = CardArt.illustration_for(card.id)
 	_title_label.text = card.display_name
 	_cost_label.text = str(card.cost)
-	_type_label.text = CardTemplate.type_text(CardTemplate.variant_for(card))
+	_type_label.text = CardTemplate.type_text(variant)
 	# The numbers live INSIDE this text, coloured (damage red, guard blue) by
 	# CardTemplate.rules_bbcode -- and they are derived from the card's
 	# effects or its authored rules_text, never stored twice, so the card

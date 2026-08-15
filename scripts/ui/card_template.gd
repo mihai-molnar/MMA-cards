@@ -17,13 +17,17 @@ extends RefCounted
 ## then checked against a render (tools/capture_cards.gd). Re-measure, do not
 ## guess, if the template is ever repainted.
 
-## The ONE frame every card wears: the dark octagon-cage master template.
-## Attack and defense no longer differ by frame -- they differ by the word on
-## the type plate and the colour of the numbers in the rules text.
+## One frame DESIGN, two colourways: attacks wear the dark octagon-cage
+## master template with its red accents; defense cards wear the same
+## template with the accents recoloured steel-blue -- generated from the
+## master by tools/generate_defense_frame.gd, never authored separately, so
+## the geometry is identical by construction and every zone below is shared.
+## The hue split is what lets a player tell defense from attack at fan
+## distance without reading anything; the type plate and number colours
+## reinforce it.
 const FRAME: StringName = &"card_master_template"
+const DEFENSE_FRAME: StringName = &"card_master_template_defense"
 
-## Variants survive the single-frame world because two things still read off
-## the tags: the type plate's word and the keyword-less number colour.
 const ATTACK: StringName = &"attack"
 const DEFENSE: StringName = &"defense"
 
@@ -113,6 +117,11 @@ static func variant_for(card: CardData) -> StringName:
 ## The word the type plate prints -- the variant, upper-cased for display.
 static func type_text(variant: StringName) -> String:
 	return String(variant).to_upper()
+
+## Which frame a variant wears: the red-accented master for attack, its
+## blue-accented recolour for defense.
+static func frame_name(variant: StringName) -> StringName:
+	return DEFENSE_FRAME if variant == DEFENSE else FRAME
 
 ## The card's rules text without any markup: the .tres author's text if set,
 ## else the effects describing themselves. This is what the player reads,

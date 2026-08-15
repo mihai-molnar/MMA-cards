@@ -103,10 +103,11 @@ func _test_hand_view_rebuild(t: TestRunner) -> void:
 
 	hand.free()
 
-## Every card wears the ONE master frame; only the illustration is per card.
-## A card that got its frame by id would break the moment a card shipped
-## without one -- and a card that somehow got a different frame would break
-## the single-template design on sight.
+## The frame is per VARIANT -- the master for attacks, its blue-accented
+## recolour for defense -- and the illustration per card id. A card that got
+## its frame by id would break the moment a card shipped without one; a
+## defense card wearing the red master would be unreadable as defense at fan
+## distance, which is the whole reason the recolour exists.
 func _test_frame_and_illustration_resolve(t: TestRunner) -> void:
 	var jab: CardView = CardView.create(CardLibrary.load_card(&"jab"))
 	t.check_eq(jab._frame.texture, CardArt.frame_for(CardTemplate.FRAME),
@@ -115,8 +116,10 @@ func _test_frame_and_illustration_resolve(t: TestRunner) -> void:
 		"the illustration is the one CardArt resolves for this card's id")
 
 	var blocker: CardView = CardView.create(CardLibrary.load_card(&"block"))
-	t.check_eq(blocker._frame.texture, jab._frame.texture,
-		"a defense card wears the SAME master frame as an attack card")
+	t.check_eq(blocker._frame.texture, CardArt.frame_for(CardTemplate.DEFENSE_FRAME),
+		"a defense card wears the blue-accented defense frame")
+	t.check(blocker._frame.texture != jab._frame.texture,
+		"attack and defense cards wear visibly different frames")
 	jab.free()
 	blocker.free()
 

@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `566 checks, 0 failures` / `PASS`.
+on a clean tree ends with `576 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -108,20 +108,43 @@ Card faces are composed at runtime, not painted. `CardView` stacks six layers
 number on the card is read from `CardData`. Nothing is baked into an image, so
 a balance change shows up on the card as soon as the `.tres` is regenerated.
 
-**There is one frame: `assets/frames/card_master_template.png`** (a dark
-octagon-cage MMA template, padded from its delivered 1035x1519 to 1036x1554
-so it is exactly the card's 2:3). Every card wears it. There is **no value
-badge** — the damage/guard number lives inside the rules text, coloured (see
-below). What still differs per card besides title/cost/art is the small
-**type plate** under the art window, which prints `ATTACK` or `DEFENSE` from
-`CardTemplate.variant_for()` — tag-driven: anything tagged `defense` is
-DEFENSE, everything else ATTACK.
+**There is one frame design, in two colourways.** The master is
+`assets/frames/card_master_template.png` (a dark octagon-cage MMA template,
+padded from its delivered 1035x1519 to 1036x1554 so it is exactly the
+card's 2:3), red-accented, worn by attack cards.
+`card_master_template_defense.png` is the SAME template with the red
+accents recoloured steel-blue, worn by defense cards — the hue split is
+what lets a player sort attack from defense at fan distance without reading
+anything. It is **generated, never authored**:
+
+```bash
+"/Users/mihai/Godot games/Godot.app/Contents/MacOS/Godot" --headless --path . \
+  --script res://tools/generate_defense_frame.gd
+```
+
+recolours red-dominant pixels (feathered on `r - max(g, b)` so anti-aliased
+trim edges don't halo) and is deterministic — same master in, byte-identical
+PNG out. Generated rather than separately authored on purpose: a second
+authored PNG would not be pixel-aligned with the master, and every
+`CardTemplate` zone is shared between the two frames, which the recolour
+guarantees by construction and the PNG-measuring template tests then
+enforce on both frames. If defense ever gets its own design language
+(different geometry, not just hue), replace the generated file at the same
+path — those tests failing loudly is the signal that per-variant zones have
+become a real requirement.
+
+There is **no value badge** — the damage/guard number lives inside the
+rules text, coloured (see below). The small **type plate** under the art
+window prints `ATTACK` or `DEFENSE` from `CardTemplate.variant_for()` —
+tag-driven: anything tagged `defense` is DEFENSE, everything else ATTACK.
+The same variant picks the frame via `CardTemplate.frame_name()`.
 
 Two lookups, both by convention, both in `scripts/ui/card_art.gd`:
 
 - **Illustration**, per card id: a card with id `jab` uses
   `res://assets/illustrations/jab.png`.
-- **Frame**, by name: `frame_for(CardTemplate.FRAME)` — one shared texture.
+- **Frame**, by name: `frame_for(CardTemplate.frame_name(variant))` — one
+  texture per colourway.
 
 That asymmetry is the point. Adding a card means authoring a `.tres` and
 dropping in **one** illustration — the frame it wears already exists. A card
@@ -441,7 +464,7 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 566 headless checks. What is
+Playable single battle, fully art-directed, 576 headless checks. What is
 conspicuously still placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen
