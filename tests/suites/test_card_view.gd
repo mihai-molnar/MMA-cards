@@ -7,11 +7,12 @@ func run(t: TestRunner) -> void:
 	_test_affordability(t)
 	_test_hand_view_rebuild(t)
 	_test_frame_and_illustration_resolve(t)
-	_test_badge_value_derives_from_effects(t)
+	_test_type_plate_follows_the_tag(t)
+	_test_title_curves_along_the_banner(t)
+	_test_rules_label_renders_the_colored_bbcode(t)
 	_test_missing_illustration_keeps_a_complete_frame(t)
 	_test_zones_are_laid_out_from_the_template(t)
 	_test_combo_armed_idempotent(t)
-	_test_badge_falls_back_to_the_other_total_when_mistagged(t)
 	_test_no_focus_outline(t)
 
 ## Clicking a Button grabs keyboard focus, and Godot draws its default white
@@ -59,8 +60,8 @@ func _test_card_view_text(t: TestRunner) -> void:
 	var text: String = view.debug_text()
 	t.check(text.contains("JAB"), "the card shows its name")
 	t.check(text.contains("1 AP"), "the card shows its cost")
-	t.check(text.contains("6"), "the card shows its damage")
-	t.check(text.contains("Deal 6 damage."), "the card shows its rules text")
+	t.check(text.contains("ATTACK"), "the card shows its type on the plate")
+	t.check(text.contains("Deal 6 damage."), "the card shows its rules text, damage number included")
 	view.free()
 
 func _test_affordability(t: TestRunner) -> void:
@@ -102,48 +103,76 @@ func _test_hand_view_rebuild(t: TestRunner) -> void:
 
 	hand.free()
 
-## Both layers come from CardArt, and they come from different lookups: the
-## illustration by card id, the frame by tag-chosen variant. A card that got
-## its frame by id would break the moment a card shipped without one.
+## Every card wears the ONE master frame; only the illustration is per card.
+## A card that got its frame by id would break the moment a card shipped
+## without one -- and a card that somehow got a different frame would break
+## the single-template design on sight.
 func _test_frame_and_illustration_resolve(t: TestRunner) -> void:
 	var jab: CardView = CardView.create(CardLibrary.load_card(&"jab"))
-	t.check_eq(jab._frame.texture, CardArt.frame_for(CardTemplate.ATTACK),
-		"an attack card wears the attack frame")
+	t.check_eq(jab._frame.texture, CardArt.frame_for(CardTemplate.FRAME),
+		"an attack card wears the master frame")
 	t.check_eq(jab._illustration.texture, CardArt.illustration_for(&"jab"),
 		"the illustration is the one CardArt resolves for this card's id")
-	jab.free()
 
 	var blocker: CardView = CardView.create(CardLibrary.load_card(&"block"))
-	t.check_eq(blocker._frame.texture, CardArt.frame_for(CardTemplate.DEFENSE),
-		"a defense-tagged card wears the defense frame")
+	t.check_eq(blocker._frame.texture, jab._frame.texture,
+		"a defense card wears the SAME master frame as an attack card")
+	jab.free()
 	blocker.free()
 
-## The badge number is derived, never stored. This is the check that would
-## catch a future regression back to a hardcoded field, and the reason the
-## card can no longer print a number the rules disagree with.
-func _test_badge_value_derives_from_effects(t: TestRunner) -> void:
+## The type plate under the artwork prints the variant, so attack and defense
+## still read differently at a glance now that the frame no longer does it.
+func _test_type_plate_follows_the_tag(t: TestRunner) -> void:
 	var jab: CardView = CardView.create(CardLibrary.load_card(&"jab"))
-	t.check_eq(jab._value_label.text, str(BattleConfig.JAB_DAMAGE),
-		"an attack card's badge shows its damage")
+	t.check_eq(jab._type_label.text, "ATTACK", "an attack card's plate reads ATTACK")
 	t.check_eq(jab._cost_label.text, str(BattleConfig.JAB_COST),
 		"the cost badge shows the card's AP cost as a bare number")
 	jab.free()
 
 	var blocker: CardView = CardView.create(CardLibrary.load_card(&"block"))
-	t.check_eq(blocker._value_label.text, str(BattleConfig.BLOCK_GUARD),
-		"a defense card's badge shows its guard, not its (zero) damage")
+	t.check_eq(blocker._type_label.text, "DEFENSE", "a defense card's plate reads DEFENSE")
 	blocker.free()
 
-	# Neither damage nor guard: an empty badge beats a misleading "0".
-	var view: CardView = CardView.create(_no_illustration_card())
-	t.check_eq(view._value_label.text, "",
-		"a card with no damage and no guard shows an empty badge rather than 0")
+## The banner on the master template is a shallow arch -- its midline sags
+## ~1.7% of card height from the centre to either end -- so the title is an
+## ArcTitleLabel that offsets each glyph down a parabola instead of a flat
+## Label. The curve itself is judged from a render (only the picture can say
+## it matches the paint); what a test CAN hold is the arc function's shape:
+## anchored at zero in the middle, symmetric, and sagging DOWNWARD (positive
+## y) toward the ends -- an upward bow would read as mocking the banner.
+func _test_title_curves_along_the_banner(t: TestRunner) -> void:
+	var view: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	t.check(view._title_label is ArcTitleLabel, "the title is an ArcTitleLabel, not a flat Label")
+	t.check_eq(view._title_label.text, "JAB", "the arc label still exposes the card's name")
 	view.free()
 
-## The fallback is now an empty WINDOW inside a complete frame, not a coloured
-## rectangle. Every card always has a frame -- it is chosen by tag, not looked
-## up by id -- so the old coloured-box branch became unreachable and was
-## removed rather than left as dead code.
+	var label := ArcTitleLabel.new()
+	label.size = Vector2(124.0, 22.5)
+	t.check_eq(label.arc_offset(0.0), 0.0, "the arc is anchored at the banner's apex mid-span")
+	t.check(label.arc_offset(1.0) > 0.0, "the arc sags downward toward the ends")
+	t.check_eq(label.arc_offset(-1.0), label.arc_offset(1.0), "the arc is symmetric")
+	t.check(label.arc_offset(0.5) < label.arc_offset(1.0),
+		"the sag grows toward the ends -- a parabola, not a step")
+	label.free()
+
+## The value badge is gone: the number now lives INSIDE the rules text,
+## coloured by CardTemplate.rules_bbcode(). The label must be a RichTextLabel
+## with bbcode on, showing exactly that markup -- and the parsed (visible)
+## text must be the plain rules, so the colour tags never leak to the player.
+func _test_rules_label_renders_the_colored_bbcode(t: TestRunner) -> void:
+	var card: CardData = CardLibrary.load_card(&"straight")
+	var view: CardView = CardView.create(card)
+	t.check(view._rules_label is RichTextLabel, "the rules label is a RichTextLabel")
+	t.check(view._rules_label.bbcode_enabled, "bbcode is enabled so the colour tags parse")
+	t.check_eq(view._rules_label.text, CardTemplate.rules_bbcode(card),
+		"the rules label shows the coloured markup from CardTemplate")
+	t.check_eq(view._rules_label.get_parsed_text(), CardTemplate.rules_plain(card),
+		"the visible text is the plain rules -- tags colour it, never appear in it")
+	view.free()
+
+## The fallback is an empty WINDOW inside a complete frame, not a coloured
+## rectangle. Every card always has a frame -- there is only one, shared --
+## so a missing illustration degrades to unpainted art, never a broken card.
 func _test_missing_illustration_keeps_a_complete_frame(t: TestRunner) -> void:
 	var view: CardView = CardView.create(_no_illustration_card())
 
@@ -154,9 +183,9 @@ func _test_missing_illustration_keeps_a_complete_frame(t: TestRunner) -> void:
 	t.check_eq(view._title_label.text, "TEST CARD", "the title is the card's display name")
 	view.free()
 
-## Positions come from CardTemplate, and the two variants must actually differ
-## -- if both frames got the attack geometry the defense number would sit off
-## the shield, which draws fine and reads wrong.
+## Positions come from CardTemplate. With one shared frame the zones are the
+## same for every card -- including the cost octagon, which used to move
+## between the two frames and now must not.
 func _test_zones_are_laid_out_from_the_template(t: TestRunner) -> void:
 	var jab: CardView = CardView.create(CardLibrary.load_card(&"jab"))
 	var blocker: CardView = CardView.create(CardLibrary.load_card(&"block"))
@@ -166,42 +195,22 @@ func _test_zones_are_laid_out_from_the_template(t: TestRunner) -> void:
 	t.check(jab._illustration.position.is_equal_approx(expected_window.position),
 		"the illustration is positioned at the template's window zone")
 
-	t.check(jab._value_label.get_rect().get_center().x
-			> blocker._value_label.get_rect().get_center().x,
-		"the attack badge sits right of the burst while the defense badge is centred in the shield")
-	t.check(jab._cost_label.position.x != blocker._cost_label.position.x,
-		"the two frames' cost circles are in different places and the labels follow")
+	var expected_type: Rect2 = CardTemplate.to_pixels(
+		CardTemplate.TYPE_ZONE, CardView.CARD_SIZE)
+	t.check(jab._type_label.position.is_equal_approx(expected_type.position),
+		"the type plate label is positioned at the template's type zone")
+
+	var expected_cost_centre: Vector2 = CardTemplate.COST_CENTRE * CardView.CARD_SIZE
+	t.check(jab._cost_label.get_rect().get_center().is_equal_approx(expected_cost_centre),
+		"the cost label is centred on the template's cost octagon")
+	t.check(jab._cost_label.position.is_equal_approx(blocker._cost_label.position),
+		"the shared frame puts every card's cost label in the same place")
 
 	jab.free()
 	blocker.free()
 
-## The discriminating case _test_badge_value_derives_from_effects cannot cover:
-## its zero-badge fixture has no effects at all, so both totals are zero
-## regardless of the fallback. Here the card actually grants guard but was
-## never tagged `defense` -- the mistake CardTemplate.variant_for() has no way
-## to catch, since it reads the tag, not the effects. Before the fallback this
-## rendered an empty attack burst badge, silently hiding a real authoring
-## error; the fallback surfaces the guard number on the wrong frame instead.
-func _test_badge_falls_back_to_the_other_total_when_mistagged(t: TestRunner) -> void:
-	var card := CardData.new()
-	card.id = &"mistagged_guard_card"
-	card.display_name = "MISTAGGED"
-	card.cost = 1
-	var guard := GuardEffect.new()
-	guard.amount = 5
-	card.effects = [guard] as Array[CardEffect]
-	# Deliberately no `defense` tag, so variant_for() picks ATTACK.
-
-	t.check_eq(CardTemplate.variant_for(card), CardTemplate.ATTACK,
-		"a guard-granting card without the defense tag still wears the attack frame")
-
-	var view: CardView = CardView.create(card)
-	t.check_eq(view._value_label.text, "5",
-		"the badge falls back to the guard total instead of rendering empty")
-	view.free()
-
 ## Guards the exact regression that shipped once: lerping from the LIVE
-## modulate instead of a fixed base drifts the tint further gold on every
+## modulate instead of a fixed base drifts the tint further on every
 ## refresh, and refresh_states() runs on every model event.
 func _test_combo_armed_idempotent(t: TestRunner) -> void:
 	var view: CardView = CardView.create(CardLibrary.load_card(&"straight"))
@@ -215,27 +224,24 @@ func _test_combo_armed_idempotent(t: TestRunner) -> void:
 		"calling set_combo_armed(true) three times matches calling it once")
 	t.check(view._frame.modulate != Color.WHITE, "the frame is actually tinted while combo-armed")
 
-	# "Not white" is too weak a bar, and this is the check that says why. The
-	# first implementation lerped 25% toward gold, which on an ALREADY-GOLD
-	# frame moved mean rendered luma 167.4 -> 170.1 -- a 1.6% shift, invisible
-	# on a card swaying in a fan, and passing "!= Color.WHITE" the whole time.
-	# The tint has to be overbright (Godot treats modulate > 1.0 as a boost) so
-	# the card reads as lit up rather than fractionally warmer.
-	# ">1.0" alone is too loose a bar too: (1.001, 1.001, 0.99) would pass it
-	# and still read as "fractionally warmer," not "lit up." Require a real
-	# margin on red and green, and pin blue below 1.0 -- the design intent
-	# above is "brightens toward gold, not white," which a blue channel
-	# allowed to cross 1.0 would quietly violate.
+	# "Not white" is too weak a bar, and this is the check that says why. An
+	# early implementation lerped 25% toward gold, which moved mean rendered
+	# luma by 1.6% -- invisible on a card swaying in a fan, and passing
+	# "!= Color.WHITE" the whole time. The tint has to be overbright (Godot
+	# treats modulate > 1.0 as a boost) so the card reads as lit up rather
+	# than fractionally warmer. ">1.0" alone is too loose a bar too: require
+	# a real margin on red and green, and pin blue below 1.0 so the boost
+	# reads warm rather than white.
 	const MIN_BRIGHT_MARGIN: float = 1.15
 	t.check(view._frame.modulate.r > MIN_BRIGHT_MARGIN and view._frame.modulate.g > MIN_BRIGHT_MARGIN,
 		"the armed tint brightens the frame by a real margin, not a hair above white")
 	t.check(view._frame.modulate.b < 1.0,
-		"blue stays below 1.0 so the tint reads as gold, not white")
+		"blue stays below 1.0 so the tint reads as warm, not white")
 
 	view.set_combo_armed(false)
 	t.check_eq(view._frame.modulate, Color.WHITE, "un-arming returns the frame to its untinted colour")
 
-	# The artwork itself must never be tinted -- the gold belongs on the gold
+	# The artwork itself must never be tinted -- the glow belongs on the
 	# frame, and tinting the illustration would misrepresent the art.
 	t.check_eq(view._illustration.modulate, Color.WHITE, "the illustration is never tinted")
 	view.free()

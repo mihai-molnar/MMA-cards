@@ -6,79 +6,131 @@ func run(t: TestRunner) -> void:
 	_test_variant_follows_the_defense_tag(t)
 	_test_zones_are_normalized(t)
 	_test_window_zone_covers_the_frame_opening(t)
-	_test_rules_zone_is_centred_on_the_parchment(t)
-	_test_rules_lines_clear_both_cost_badges(t)
-	_test_rules_lines_fit_the_painted_parchment(t)
+	_test_rules_zone_is_centred_on_the_panel(t)
+	_test_rules_lines_fit_the_painted_panel(t)
+	_test_type_text_follows_the_variant(t)
+	_test_rules_bbcode_colors_numbers(t)
 	_test_pixel_conversion(t)
 
 ## The frame is drawn OVER the illustration, and its art opening is not a
-## clean rectangle: the ribbon's drop shadow above and the badge's flanks
-## below are semi-transparent, so any opening pixel outside WINDOW_ZONE shows
-## the background as a dark gap instead of art. The zone must therefore
-## COVER the opening (with bleed), not merely trace it: this measures the
-## bounding box of every transparent pixel inside the card body on both
-## frames and asserts the zone contains it. Overshoot is free -- the frame's
-## opaque paint covers whatever the illustration puts behind it.
+## clean rectangle: the octagonal window's cut corners and the trim shadows
+## are semi-transparent, so any opening pixel outside WINDOW_ZONE shows the
+## background as a dark gap instead of art. The zone must therefore COVER the
+## opening (with bleed), not merely trace it: this measures the bounding box
+## of every transparent pixel inside the card body on the master frame and
+## asserts the zone contains it. Overshoot is free -- the frame's opaque
+## paint covers whatever the illustration puts behind it.
 func _test_window_zone_covers_the_frame_opening(t: TestRunner) -> void:
-	# The card body, excluding the frame's outer transparent glow border and
-	# the decorative pockets above the title ribbon (those sit outside the
-	# art window on purpose).
-	const BODY_X0: float = 0.10
-	const BODY_X1: float = 0.90
-	const BODY_Y0: float = 0.15
-	const BODY_Y1: float = 0.72
-	for variant: StringName in [CardTemplate.ATTACK, CardTemplate.DEFENSE]:
-		var image: Image = (load("res://assets/frames/%s.png" % variant) as Texture2D).get_image()
-		var width: int = image.get_width()
-		var height: int = image.get_height()
-		var min_x: int = width
-		var max_x: int = -1
-		var min_y: int = height
-		var max_y: int = -1
-		for y: int in range(int(BODY_Y0 * height), int(BODY_Y1 * height)):
-			for x: int in range(int(BODY_X0 * width), int(BODY_X1 * width)):
-				if image.get_pixel(x, y).a < 0.10:
-					min_x = mini(min_x, x)
-					max_x = maxi(max_x, x)
-					min_y = mini(min_y, y)
-					max_y = maxi(max_y, y)
-		t.check(max_x >= 0, "the %s frame has a transparent art opening" % variant)
-		if max_x < 0:
-			continue
-		var zone: Rect2 = CardTemplate.WINDOW_ZONE
-		t.check(zone.position.x <= float(min_x) / width and zone.end.x >= float(max_x) / width,
-			"the window zone covers the %s opening horizontally (opening %.3f..%.3f)" % [
-				variant, float(min_x) / width, float(max_x) / width])
-		t.check(zone.position.y <= float(min_y) / height and zone.end.y >= float(max_y) / height,
-			"the window zone covers the %s opening vertically (opening %.3f..%.3f)" % [
-				variant, float(min_y) / height, float(max_y) / height])
+	# The card body, excluding the frame's transparent outside-the-rounded-
+	# corners margin.
+	const BODY_X0: float = 0.08
+	const BODY_X1: float = 0.92
+	const BODY_Y0: float = 0.10
+	const BODY_Y1: float = 0.65
+	var image: Image = _frame_image()
+	var width: int = image.get_width()
+	var height: int = image.get_height()
+	var min_x: int = width
+	var max_x: int = -1
+	var min_y: int = height
+	var max_y: int = -1
+	for y: int in range(int(BODY_Y0 * height), int(BODY_Y1 * height)):
+		for x: int in range(int(BODY_X0 * width), int(BODY_X1 * width)):
+			if image.get_pixel(x, y).a < 0.10:
+				min_x = mini(min_x, x)
+				max_x = maxi(max_x, x)
+				min_y = mini(min_y, y)
+				max_y = maxi(max_y, y)
+	t.check(max_x >= 0, "the master frame has a transparent art opening")
+	if max_x < 0:
+		return
+	var zone: Rect2 = CardTemplate.WINDOW_ZONE
+	t.check(zone.position.x <= float(min_x) / width and zone.end.x >= float(max_x) / width,
+		"the window zone covers the opening horizontally (opening %.3f..%.3f)" % [
+			float(min_x) / width, float(max_x) / width])
+	t.check(zone.position.y <= float(min_y) / height and zone.end.y >= float(max_y) / height,
+		"the window zone covers the opening vertically (opening %.3f..%.3f)" % [
+			float(min_y) / height, float(max_y) / height])
 
 ## Rules text is centre-aligned, so it only LOOKS centred if the zone's own
-## horizontal centre sits on the parchment's visual centre. Measured from the
-## painted pixels at the zone's top row (where the parchment runs full
-## width), not hand-set, so a repainted template moves this too.
-func _test_rules_zone_is_centred_on_the_parchment(t: TestRunner) -> void:
-	for variant: StringName in [CardTemplate.ATTACK, CardTemplate.DEFENSE]:
-		var image: Image = (load("res://assets/frames/%s.png" % variant) as Texture2D).get_image()
-		var y: int = int((CardTemplate.RULES_ZONE.position.y + 0.01) * image.get_height())
-		var run: Array = _widest_parchment_run(image, y)
-		t.check(run[1] > run[0], "the %s parchment has a full-width run at the zone top" % variant)
-		var parchment_centre: float = (run[0] + run[1]) / 2.0
-		var zone_centre: float = CardTemplate.RULES_ZONE.get_center().x
-		t.check(absf(zone_centre - parchment_centre) < 0.02,
-			"the %s rules zone is centred on the parchment (zone %.3f, parchment %.3f)" % [
-				variant, zone_centre, parchment_centre])
+## horizontal centre sits on the panel's visual centre. Measured from the
+## painted pixels at the zone's top row, not hand-set, so a repainted
+## template moves this too.
+func _test_rules_zone_is_centred_on_the_panel(t: TestRunner) -> void:
+	var image: Image = _frame_image()
+	var y: int = int((CardTemplate.RULES_ZONE.position.y + 0.01) * image.get_height())
+	var run: Array = _widest_panel_run(image, y)
+	t.check(run[1] > run[0], "the rules panel has a full-width run at the zone top")
+	if run[1] <= run[0]:
+		return
+	var panel_centre: float = (run[0] + run[1]) / 2.0
+	var zone_centre: float = CardTemplate.RULES_ZONE.get_center().x
+	t.check(absf(zone_centre - panel_centre) < 0.02,
+		"the rules zone is centred on the panel (zone %.3f, panel %.3f)" % [
+			zone_centre, panel_centre])
 
 func _test_variant_follows_the_defense_tag(t: TestRunner) -> void:
-	# Tag-driven, so a new card needs no registration here.
+	# Tag-driven, so a new card needs no registration here. The variant no
+	# longer picks a frame -- every card wears the master template -- but it
+	# still picks the type-plate word and the fallback number colour.
 	t.check_eq(CardTemplate.variant_for(CardLibrary.load_card(&"block")), CardTemplate.DEFENSE,
-		"a card tagged defense wears the defense frame")
+		"a card tagged defense is the defense variant")
 	t.check_eq(CardTemplate.variant_for(CardLibrary.load_card(&"jab")), CardTemplate.ATTACK,
-		"a card without the defense tag wears the attack frame")
+		"a card without the defense tag is the attack variant")
 
 	var untagged := CardData.new()
 	t.check_eq(CardTemplate.variant_for(untagged), CardTemplate.ATTACK,
-		"a card with no tags at all falls to the attack frame rather than erroring")
+		"a card with no tags at all falls to the attack variant rather than erroring")
+
+## The type plate prints the variant as display text: the word the player
+## reads under the artwork, same place Slay the Spire prints "Attack".
+func _test_type_text_follows_the_variant(t: TestRunner) -> void:
+	t.check_eq(CardTemplate.type_text(CardTemplate.ATTACK), "ATTACK",
+		"the attack variant prints ATTACK on the type plate")
+	t.check_eq(CardTemplate.type_text(CardTemplate.DEFENSE), "DEFENSE",
+		"the defense variant prints DEFENSE on the type plate")
+
+## The numbers moved off the badge and INTO the rules text, coloured so they
+## still pop: damage red, guard blue. The colour is decided per number from
+## the sentence it sits in, falling back to the card's variant for sentences
+## that name neither (Straight's "Combo: +7 right after Jab.").
+func _test_rules_bbcode_colors_numbers(t: TestRunner) -> void:
+	var damage_hex: String = CardTemplate.RULES_DAMAGE_COLOR.to_html(false)
+	var guard_hex: String = CardTemplate.RULES_GUARD_COLOR.to_html(false)
+
+	t.check_eq(CardTemplate.rules_bbcode(CardLibrary.load_card(&"jab")),
+		"Deal [color=#%s]6[/color] damage." % damage_hex,
+		"jab's damage number is wrapped in the damage colour")
+	t.check_eq(CardTemplate.rules_bbcode(CardLibrary.load_card(&"block")),
+		"Gain [color=#%s]5[/color] guard." % guard_hex,
+		"block's guard number is wrapped in the guard colour")
+	t.check_eq(CardTemplate.rules_bbcode(CardLibrary.load_card(&"straight")),
+		"Deal [color=#%s]9[/color] damage. Combo: [color=#%s]+7[/color] right after Jab." % [
+			damage_hex, damage_hex],
+		"straight's combo bonus takes the damage colour even though its sentence names neither keyword")
+
+	# A card mixing both keywords colours each number by its own sentence.
+	var mixed := CardData.new()
+	mixed.rules_text = "Deal 3 damage. Gain 4 guard."
+	t.check_eq(CardTemplate.rules_bbcode(mixed),
+		"Deal [color=#%s]3[/color] damage. Gain [color=#%s]4[/color] guard." % [
+			damage_hex, guard_hex],
+		"a mixed card colours damage red and guard blue in the same text")
+
+	# The keyword-less fallback follows the variant, so a defense card's
+	# bare number reads blue.
+	var vague := CardData.new()
+	vague.tags = [&"defense"] as Array[StringName]
+	vague.rules_text = "Combo: +2 right after Jab."
+	t.check_eq(CardTemplate.rules_bbcode(vague),
+		"Combo: [color=#%s]+2[/color] right after Jab." % guard_hex,
+		"a keyword-less sentence on a defense card falls back to the guard colour")
+
+	# The plain text is the bbcode with the colour tags stripped -- what the
+	# wrap model below measures, and what the label actually renders.
+	t.check_eq(CardTemplate.rules_plain(CardLibrary.load_card(&"straight")),
+		"Deal 9 damage. Combo: +7 right after Jab.",
+		"rules_plain returns the uncoloured text")
 
 ## Zones are fractions of the card rect, not pixels, so CARD_SIZE can change
 ## without a re-measure. A value outside 0..1 means someone pasted a raw
@@ -87,6 +139,7 @@ func _test_zones_are_normalized(t: TestRunner) -> void:
 	for named_zone: Array in [
 		["title", CardTemplate.TITLE_ZONE],
 		["window", CardTemplate.WINDOW_ZONE],
+		["type", CardTemplate.TYPE_ZONE],
 		["rules", CardTemplate.RULES_ZONE],
 	]:
 		var label: String = named_zone[0]
@@ -98,38 +151,30 @@ func _test_zones_are_normalized(t: TestRunner) -> void:
 		t.check(zone.size.x > 0.0 and zone.size.y > 0.0,
 			"the %s zone has a positive size" % label)
 
-	for variant: StringName in [CardTemplate.ATTACK, CardTemplate.DEFENSE]:
-		var value: Rect2 = CardTemplate.centred_pixels(
-			CardTemplate.VALUE_CENTRE[variant], CardTemplate.VALUE_BOX[variant], Vector2.ONE)
-		t.check(value.position.x >= 0.0 and value.end.x <= 1.0,
-			"the %s value badge sits inside the card horizontally" % variant)
-		t.check(value.position.y >= 0.0 and value.end.y <= 1.0,
-			"the %s value badge sits inside the card vertically" % variant)
+	var cost: Rect2 = CardTemplate.centred_pixels(
+		CardTemplate.COST_CENTRE, CardTemplate.COST_BOX, Vector2.ONE)
+	t.check(cost.position.x >= 0.0 and cost.end.x <= 1.0,
+		"the cost badge sits inside the card horizontally")
+	t.check(cost.position.y >= 0.0 and cost.end.y <= 1.0,
+		"the cost badge sits inside the card vertically")
 
 ## RULES_ZONE is a WRAPPING BOX, not a text extent: the label centres each
-## wrapped line inside it, so a wide zone with short centred lines is fine
-## even where the cost disc cuts into the parchment. What must stay clear of
-## the disc is therefore each RENDERED LINE, not the zone box -- these
-## helpers model exactly what the label draws (greedy word wrap at the
-## zone's pixel width, lines centred both ways) so the guards below can
-## assert on it. Wrap and metrics use the same font the rules label wears --
-## CardTemplate.FONT, falling back to the theme default while that is null
-## -- or the model measures a different face than the one on screen.
+## wrapped line inside it, so a wide zone with short centred lines is fine.
+## What must sit on the painted panel is each RENDERED LINE -- these helpers
+## model exactly what the label draws (greedy word wrap at the zone's pixel
+## width, lines centred both ways) so the guard below can assert on it. Wrap
+## and metrics use the same font the rules label wears -- CardTemplate.FONT,
+## falling back to the theme default while that is null -- or the model
+## measures a different face than the one on screen.
 
 const CARD_SIZE: Vector2 = Vector2(200.0, 300.0)
-## Godot's default Label theme separates lines by 3px on top of font height.
-const LINE_SPACING: float = 3.0
-const COST_RADIUS: float = 0.066
+## RichTextLabel's default theme separates lines by 0px on top of font height
+## (Label's default is 3). Must match the live label, or the block height in
+## the model drifts from the rendered one.
+const LINE_SPACING: float = 0.0
 
-func _rules_text(card: CardData) -> String:
-	if not card.rules_text.is_empty():
-		return card.rules_text
-	var parts: Array[String] = []
-	for effect: CardEffect in card.effects:
-		var description: String = effect.describe()
-		if not description.is_empty():
-			parts.append(description)
-	return " ".join(parts)
+func _frame_image() -> Image:
+	return (load("res://assets/frames/%s.png" % CardTemplate.FRAME) as Texture2D).get_image()
 
 func _rules_font() -> Font:
 	return CardTemplate.FONT if CardTemplate.FONT != null else ThemeDB.fallback_font
@@ -170,81 +215,53 @@ func _line_rects(lines: Array[String]) -> Array[Rect2]:
 		rects.append(Rect2(rect_px.position / CARD_SIZE, rect_px.size / CARD_SIZE))
 	return rects
 
-func _library_faces() -> Array[Array]:
-	var faces: Array[Array] = []
+## Reads the ACTUAL PAINTED ARTWORK rather than another hand-set constant:
+## every rendered line of every library card must sit on the painted rules
+## panel. If the template is ever repainted such that the panel moves, this
+## fails, which is the point: CLAUDE.md's "re-measure, do not guess"
+## instruction for card_template.gd becomes an enforced check instead of a
+## request. The wrap model measures the PLAIN text -- the colour tags add no
+## visible characters, so the label wraps the same string.
+func _test_rules_lines_fit_the_painted_panel(t: TestRunner) -> void:
+	# The painted edge is anti-aliased near the trim, so a rim can dip a few
+	# pixels below the panel predicate right at a line's boundary without
+	# anything being unreadable -- this forgives raster noise, not a line
+	# genuinely off the panel.
+	const EDGE_TOLERANCE: float = 0.03
+	var image: Image = _frame_image()
+	var height: int = image.get_height()
+
 	for card_id: StringName in [&"jab", &"straight", &"block"]:
 		var card: CardData = CardLibrary.load_card(card_id)
-		var variant: StringName = CardTemplate.variant_for(card)
 		var zone_width_px: float = CardTemplate.RULES_ZONE.size.x * CARD_SIZE.x
-		faces.append([card_id, variant, _line_rects(_wrapped_lines(_rules_text(card), zone_width_px))])
-	return faces
-
-## Cheap, frame-art-independent guard: any rendered line low enough to sit
-## beside the cost disc must end before the disc begins. Holds regardless of
-## what the frame artwork looks like; the painted-parchment test below is
-## the tight one.
-func _test_rules_lines_clear_both_cost_badges(t: TestRunner) -> void:
-	for face: Array in _library_faces():
-		var card_id: StringName = face[0]
-		var variant: StringName = face[1]
-		var circle_left: float = CardTemplate.COST_CENTRE[variant].x - COST_RADIUS
-		var circle_top: float = CardTemplate.COST_CENTRE[variant].y - COST_RADIUS
-		for rect: Rect2 in face[2]:
-			if rect.end.y <= circle_top:
-				continue
-			t.check(rect.end.x < circle_left,
-				"%s: a rules line beside the cost disc ends before it (line end %.3f, disc left %.3f)" % [
-					card_id, rect.end.x, circle_left])
-
-## Reads the ACTUAL PAINTED ARTWORK rather than another hand-set constant:
-## every rendered line of every library card must sit on painted parchment
-## on the frame it wears -- including the corner ornament and disc shadow,
-## which cut in tighter than the plain circle above. If a template is ever
-## repainted such that the parchment moves, this fails, which is the point:
-## CLAUDE.md's "re-measure, do not guess" instruction for card_template.gd
-## becomes an enforced check instead of a request.
-func _test_rules_lines_fit_the_painted_parchment(t: TestRunner) -> void:
-	# The painted edge is anti-aliased and shadowed near the disc, so a rim
-	# can dip a few pixels below the parchment predicate right at a line's
-	# boundary without anything being unreadable -- this forgives raster
-	# noise, not a line genuinely off the parchment.
-	const EDGE_TOLERANCE: float = 0.03
-	var images: Dictionary = {}
-	for variant: StringName in [CardTemplate.ATTACK, CardTemplate.DEFENSE]:
-		images[variant] = (load("res://assets/frames/%s.png" % variant) as Texture2D).get_image()
-
-	for face: Array in _library_faces():
-		var card_id: StringName = face[0]
-		var image: Image = images[face[1]]
-		var height: int = image.get_height()
-		for rect: Rect2 in face[2]:
+		var rects: Array[Rect2] = _line_rects(
+			_wrapped_lines(CardTemplate.rules_plain(card), zone_width_px))
+		for rect: Rect2 in rects:
 			# Top, middle and bottom row of the line's own band.
 			for frac_y: float in [rect.position.y + 0.004, rect.get_center().y, rect.end.y - 0.004]:
 				var y: int = mini(int(frac_y * float(height)), height - 1)
-				var run: Array = _widest_parchment_run(image, y)
+				var run: Array = _widest_panel_run(image, y)
 				t.check(run[1] > run[0],
-					"%s: row %.3f has a wide painted-parchment run" % [card_id, frac_y])
+					"%s: row %.3f has a wide painted-panel run" % [card_id, frac_y])
 				if run[1] <= run[0]:
 					continue
 				t.check(run[0] <= rect.position.x + EDGE_TOLERANCE,
-					"%s: parchment covers the line's left edge at row %.3f (run %.3f, line %.3f)" % [
+					"%s: the panel covers the line's left edge at row %.3f (run %.3f, line %.3f)" % [
 						card_id, frac_y, run[0], rect.position.x])
 				t.check(run[1] >= rect.end.x - EDGE_TOLERANCE,
-					"%s: parchment covers the line's right edge at row %.3f (run %.3f, line %.3f)" % [
+					"%s: the panel covers the line's right edge at row %.3f (run %.3f, line %.3f)" % [
 						card_id, frac_y, run[1], rect.end.x])
 
-## Widest painted-parchment run on a pixel row, as [x0, x1] fractions.
-## Pixel predicate derived by measuring these exact PNGs: opaque, warm, and
-## neither as red as the frame border nor as blue/grey as the cost disc. A
-## run narrower than 5% of the width is a stray pixel of trim coincidentally
-## matching, not a writable area.
-func _widest_parchment_run(image: Image, y: int) -> Array:
-	const ALPHA_MIN: float = 0.78
-	const RED_MIN: float = 0.373
-	const RED_MINUS_BLUE_MAX: float = 0.470
-	const RED_MINUS_GREEN_MAX: float = 0.216
-	const GREEN_MIN: float = 0.333
-	const BLUE_MIN: float = 0.216
+## Widest painted rules-panel run on a pixel row, as [x0, x1] fractions.
+## Pixel predicate derived by measuring the master template: the panel is
+## opaque near-neutral dark grey (v .03-.38 with a vignette toward the
+## bottom), where the red inner trim is strongly red-dominant and the metal
+## trims are bright. A run narrower than 5% of the width is a stray patch of
+## border texture coincidentally matching, not a writable area.
+func _widest_panel_run(image: Image, y: int) -> Array:
+	const ALPHA_MIN: float = 0.90
+	const VALUE_MAX: float = 0.42
+	const RED_DOMINANCE_MAX: float = 0.10
 	const MIN_RUN_FRACTION: float = 0.05
 
 	var width: int = image.get_width()
@@ -253,11 +270,11 @@ func _widest_parchment_run(image: Image, y: int) -> Array:
 	var run_start: int = -1
 	for x in range(width):
 		var pixel: Color = image.get_pixel(x, y)
-		var is_parchment: bool = pixel.a > ALPHA_MIN and pixel.r > RED_MIN \
-			and (pixel.r - pixel.b) < RED_MINUS_BLUE_MAX \
-			and (pixel.r - pixel.g) < RED_MINUS_GREEN_MAX \
-			and pixel.g > GREEN_MIN and pixel.b > BLUE_MIN
-		if is_parchment:
+		var value: float = maxf(pixel.r, maxf(pixel.g, pixel.b))
+		var is_panel: bool = pixel.a > ALPHA_MIN and value < VALUE_MAX \
+			and (pixel.r - pixel.b) < RED_DOMINANCE_MAX \
+			and (pixel.r - pixel.g) < RED_DOMINANCE_MAX
+		if is_panel:
 			if run_start == -1:
 				run_start = x
 		elif run_start != -1:

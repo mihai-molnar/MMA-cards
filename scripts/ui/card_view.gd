@@ -1,8 +1,8 @@
 class_name CardView
 extends Button
 
-## One card, composed at runtime: an illustration, a frame chosen by the card's
-## tags, and four text zones read from CardData. Knows how to draw a card and
+## One card, composed at runtime: an illustration, the shared master frame,
+## and four text zones read from CardData. Knows how to draw a card and
 ## report clicks; knows nothing about whether playing it is legal.
 ##
 ## Nothing about the face is baked into an image, so a balance change is
@@ -70,9 +70,9 @@ var _lunging: bool = false
 ## Bottom to top: illustration, frame, then the four text zones. See _build().
 var _illustration: TextureRect
 var _frame: TextureRect
-var _title_label: Label
-var _value_label: Label
-var _rules_label: Label
+var _title_label: ArcTitleLabel
+var _type_label: Label
+var _rules_label: RichTextLabel
 var _cost_label: Label
 
 static func create(p_card: CardData) -> CardView:
@@ -191,22 +191,34 @@ func _build() -> void:
 	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_frame)
 
-	_title_label = _make_label(CardTemplate.TITLE_SIZE, CardTemplate.TITLE_COLOR, true)
+	# The title bends along the banner's arch -- an ArcTitleLabel, not a flat
+	# Label. It styles itself from CardTemplate.
+	_title_label = ArcTitleLabel.new()
 	add_child(_title_label)
 
-	_value_label = _make_label(CardTemplate.VALUE_SIZE, CardTemplate.VALUE_COLOR, true)
-	add_child(_value_label)
+	_type_label = _make_label(CardTemplate.TYPE_SIZE, CardTemplate.TYPE_COLOR, true)
+	add_child(_type_label)
 
 	_cost_label = _make_label(CardTemplate.COST_SIZE, CardTemplate.COST_COLOR, true)
 	add_child(_cost_label)
 
-	# Dark ink on the parchment: no outline, and the only wrapping label.
-	_rules_label = _make_label(CardTemplate.RULES_SIZE, CardTemplate.RULES_COLOR, false)
+	# A RichTextLabel, not a Label: the numbers inside the rules text are
+	# coloured via bbcode (CardTemplate.rules_bbcode), which Label cannot
+	# render. Light ink on the dark panel, and the only wrapping label.
+	_rules_label = RichTextLabel.new()
+	_rules_label.bbcode_enabled = true
+	_rules_label.scroll_active = false
 	_rules_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	# Centred, not top-aligned: RULES_ZONE is fitted to the parchment, and cards
-	# differ in line count (Block wraps to one line, Straight to two). Pinning to
-	# the top leaves a one-line card's text floating above an empty panel.
+	_rules_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Centred, not top-aligned: RULES_ZONE is fitted to the panel, and cards
+	# differ in line count (Block wraps to one line, Straight to two). Pinning
+	# to the top leaves a one-line card's text floating above an empty panel.
 	_rules_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_rules_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if CardTemplate.FONT != null:
+		_rules_label.add_theme_font_override("normal_font", CardTemplate.FONT)
+	_rules_label.add_theme_font_size_override("normal_font_size", CardTemplate.RULES_SIZE)
+	_rules_label.add_theme_color_override("default_color", CardTemplate.RULES_COLOR)
 	add_child(_rules_label)
 
 	pressed.connect(_on_pressed)
@@ -232,56 +244,31 @@ func configure(p_card: CardData) -> void:
 	card = p_card
 	if card == null:
 		return
-	var variant: StringName = CardTemplate.variant_for(card)
-	_frame.texture = CardArt.frame_for(variant)
+	_frame.texture = CardArt.frame_for(CardTemplate.FRAME)
 	_illustration.texture = CardArt.illustration_for(card.id)
 	_title_label.text = card.display_name
 	_cost_label.text = str(card.cost)
-	_value_label.text = _badge_value_text(variant)
-	_rules_label.text = _rules_text()
-	_layout_zones(variant)
+	_type_label.text = CardTemplate.type_text(CardTemplate.variant_for(card))
+	# The numbers live INSIDE this text, coloured (damage red, guard blue) by
+	# CardTemplate.rules_bbcode -- and they are derived from the card's
+	# effects or its authored rules_text, never stored twice, so the card
+	# cannot print a value the rules disagree with.
+	_rules_label.text = CardTemplate.rules_bbcode(card)
+	_layout_zones()
 	set_combo_armed(false)
 
-## The badge number is DERIVED from the card's effects, never stored: a card
-## wearing the defense frame shows the guard it grants, everything else the
-## damage it deals. This is the whole reason a card can no longer print a
-## value the rules disagree with -- there is no second copy of the number to
-## fall out of date.
-##
-## The variant's own total is preferred, but a nonzero total on the OTHER
-## side falls back rather than being swallowed: a card that grants guard but
-## was never tagged `defense` (the tag that also drives HandView's play
-## anchor) would otherwise wear the attack frame, ask for total_base_damage(),
-## get zero, and render an empty burst badge -- silently hiding the authoring
-## mistake instead of surfacing it. With the fallback it shows the guard
-## number on the wrong frame, which looks oddly-framed rather than broken, and
-## is the kind of wrong a glance at the render actually catches.
-##
-## A card with neither shows nothing rather than "0", which would read as a
-## card that deals zero damage instead of a card that is not about damage.
-func _badge_value_text(variant: StringName) -> String:
-	var own_total: int = card.total_guard() if variant == CardTemplate.DEFENSE \
-		else card.total_base_damage()
-	var other_total: int = card.total_base_damage() if variant == CardTemplate.DEFENSE \
-		else card.total_guard()
-	var value: int = own_total if own_total != 0 else other_total
-	return "" if value == 0 else str(value)
-
-## Positions every layer from the template's normalized zones. Called from
-## configure() rather than _build() because the value and cost zones depend on
-## which frame the card ended up wearing.
+## Positions every layer from the template's normalized zones. One shared
+## frame, so every card lays out identically.
 ##
 ## These write position/size on CHILD controls directly. That does not violate
 ## the compose-never-assign rule: _process composes position/rotation/scale of
 ## the CardView itself, and never touches its children's rects.
-func _layout_zones(variant: StringName) -> void:
+func _layout_zones() -> void:
 	_place(_illustration, CardTemplate.to_pixels(CardTemplate.WINDOW_ZONE, CARD_SIZE))
 	_place(_title_label, CardTemplate.to_pixels(CardTemplate.TITLE_ZONE, CARD_SIZE))
+	_place(_type_label, CardTemplate.to_pixels(CardTemplate.TYPE_ZONE, CARD_SIZE))
 	_place(_rules_label, CardTemplate.to_pixels(CardTemplate.RULES_ZONE, CARD_SIZE))
-	_place_centred(_value_label,
-		CardTemplate.VALUE_CENTRE[variant], CardTemplate.VALUE_BOX[variant])
-	_place_centred(_cost_label,
-		CardTemplate.COST_CENTRE[variant], CardTemplate.COST_BOX)
+	_place_centred(_cost_label, CardTemplate.COST_CENTRE, CardTemplate.COST_BOX)
 
 func _place(control: Control, rect: Rect2) -> void:
 	control.position = rect.position
@@ -303,16 +290,6 @@ func _place_centred(control: Control, centre: Vector2, box: Vector2) -> void:
 	control.size = rect.size
 	control.position = rect.get_center() - control.size / 2.0
 
-func _rules_text() -> String:
-	if not card.rules_text.is_empty():
-		return card.rules_text
-	var parts: Array[String] = []
-	for effect: CardEffect in card.effects:
-		var description: String = effect.describe()
-		if not description.is_empty():
-			parts.append(description)
-	return " ".join(parts)
-
 func set_affordable(value: bool) -> void:
 	disabled = not value
 	modulate.a = 1.0 if value else UNAFFORDABLE_ALPHA
@@ -331,10 +308,13 @@ func set_affordable(value: bool) -> void:
 func set_combo_armed(value: bool) -> void:
 	_frame.modulate = COMBO_ARMED_TINT if value else Color.WHITE
 
-## Everything the card displays, for tests.
+## Everything the card displays, for tests. The rules come back PARSED --
+## the visible characters, colour tags stripped -- because that is what the
+## player reads.
 func debug_text() -> String:
 	return "%s | %s AP | %s | %s" % [
-		_title_label.text, _cost_label.text, _value_label.text, _rules_label.text]
+		_title_label.text, _cost_label.text, _type_label.text,
+		_rules_label.get_parsed_text()]
 
 func _on_pressed() -> void:
 	card_selected.emit(self)

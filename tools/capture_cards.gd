@@ -6,7 +6,7 @@ extends SceneTree
 ## on the project's 1152x648 base canvas.
 ##
 ## Card-face layout is geometry no test can check. An assertion that
-## _value_label.position equals CardTemplate's zone proves the code did what
+## _type_label.position equals CardTemplate's zone proves the code did what
 ## the code says -- not that the number landed inside the shield. This project
 ## has been burned by that exact class of green-test-over-broken-visual
 ## before (see CLAUDE.md, "Verifying animation -- tests cannot see motion").

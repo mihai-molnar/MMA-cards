@@ -3,12 +3,13 @@ extends RefCounted
 
 ## Two kinds of image, both found by convention rather than a lookup table:
 ##
-##   illustration_for(&"jab")  -> res://assets/illustrations/jab.png
-##   frame_for(&"attack")      -> res://assets/frames/attack.png
+##   illustration_for(&"jab")            -> res://assets/illustrations/jab.png
+##   frame_for(CardTemplate.FRAME)       -> res://assets/frames/card_master_template.png
 ##
-## Illustrations are per card id; frames are per template variant. That
-## asymmetry is the point: adding a card means authoring a .tres and dropping
-## in one illustration -- the frame it wears already exists, chosen by tag.
+## Illustrations are per card id; the frame is shared -- every card wears the
+## one master template. That asymmetry is the point: adding a card means
+## authoring a .tres and dropping in one illustration -- the frame it wears
+## already exists.
 ##
 ## Deliberately lives in scripts/ui/ rather than as a field on CardData:
 ## scripts/core/ has stayed free of presentation concerns for four passes, and

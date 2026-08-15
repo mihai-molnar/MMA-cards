@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `558 checks, 0 failures` / `PASS`.
+on a clean tree ends with `566 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -104,63 +104,87 @@ No magic numbers anywhere else. But the constants are not uniformly live:
 ## Card art
 
 Card faces are composed at runtime, not painted. `CardView` stacks six layers
-— illustration, frame, then title, value, rules and cost text — and every
+— illustration, frame, then title, type, rules and cost text — and every
 number on the card is read from `CardData`. Nothing is baked into an image, so
 a balance change shows up on the card as soon as the `.tres` is regenerated.
+
+**There is one frame: `assets/frames/card_master_template.png`** (a dark
+octagon-cage MMA template, padded from its delivered 1035x1519 to 1036x1554
+so it is exactly the card's 2:3). Every card wears it. There is **no value
+badge** — the damage/guard number lives inside the rules text, coloured (see
+below). What still differs per card besides title/cost/art is the small
+**type plate** under the art window, which prints `ATTACK` or `DEFENSE` from
+`CardTemplate.variant_for()` — tag-driven: anything tagged `defense` is
+DEFENSE, everything else ATTACK.
 
 Two lookups, both by convention, both in `scripts/ui/card_art.gd`:
 
 - **Illustration**, per card id: a card with id `jab` uses
   `res://assets/illustrations/jab.png`.
-- **Frame**, per variant: a card tagged `defense` gets
-  `res://assets/frames/defense.png`, everything else `attack.png`.
+- **Frame**, by name: `frame_for(CardTemplate.FRAME)` — one shared texture.
 
 That asymmetry is the point. Adding a card means authoring a `.tres` and
-dropping in **one** illustration — the frame it wears already exists, chosen by
-tag. A card with no illustration yet renders a complete, correct frame around
-an empty window: a real degradation path, not a bug.
+dropping in **one** illustration — the frame it wears already exists. A card
+with no illustration yet renders a complete, correct frame around an empty
+window: a real degradation path, not a bug.
 
-`CardArt`'s cache is keyed by resolved path rather than by id or variant name.
-Keying by the bare name would collide the day someone adds a card with id
-`attack` — its illustration and the attack frame would share a key and serve
+`CardArt`'s cache is keyed by resolved path rather than by bare name. Keying
+by the bare name would collide the day someone adds a card whose id matches
+the frame's name — its illustration and the frame would share a key and serve
 each other's texture.
+
+**Numbers in the rules text are coloured by `CardTemplate.rules_bbcode()`**:
+damage red (`RULES_DAMAGE_COLOR`), guard blue (`RULES_GUARD_COLOR`). The
+rules label is a `RichTextLabel` (Label cannot render inline colour). Each
+number is coloured by the sentence it sits in — a sentence containing
+"damage" goes red, "guard"/"block" blue, and a sentence naming neither
+(Straight's "Combo: +7 right after Jab.") falls back to the card's variant.
+The colour tags add no visible characters, so the wrap tests measure
+`rules_plain()` and model exactly what the label renders.
 
 **Geometry and typography live in `scripts/ui/card_template.gd`**, as zones
 normalized to 0-1 fractions of the card rect rather than pixels — `CARD_SIZE`
 has changed once already, and normalized zones survive that without a
-re-measure. Only two zones differ between the frames: the value badge (right of
-the burst on attack, centred in the shield on defense) and the cost badge.
+re-measure.
 
-Two zone subtleties, both learned the hard way:
+Two zone subtleties, both learned the hard way (on the previous two-frame
+templates, and both still binding):
 
 - **`WINDOW_ZONE` covers the frame's transparent art opening with bleed, it
-  does not trace it.** The opening's edges are semi-transparent (ribbon drop
-  shadow above, badge flanks below), so an illustration cut to the opening
-  shows the background through those pixels as dark gaps between art and
+  does not trace it.** The opening is an octagon with anti-aliased cut
+  corners, so an illustration cut to the opening's bbox shows the background
+  through the semi-transparent edge pixels as dark gaps between art and
   frame — that shipped once. Overshoot is free: the frame draws over the
   illustration. `_test_window_zone_covers_the_frame_opening` measures the
-  opening from the PNGs and asserts containment.
+  opening from the PNG and asserts containment.
 - **`RULES_ZONE` is a wrapping box, not a text extent.** Lines are
-  centre-aligned inside it, so the zone is wide and centred on the
-  parchment's measured centre (x `.498`) even though the cost disc and
-  corner ornament cut into the parchment's lower-right — what must clear
-  the artwork is each rendered *line*, and the guards model exactly that:
-  `_test_rules_lines_clear_both_cost_badges` (cheap, art-independent) and
-  `_test_rules_lines_fit_the_painted_parchment` (samples the frame PNGs,
-  the binding one) greedily wrap each library card's text at the zone's
-  pixel width and assert per line. `_test_rules_zone_is_centred_on_the_
-  parchment` pins the zone centre to the painted centre — an off-centre
-  zone renders every centred line visibly left or right of the parchment's
-  middle, which is exactly how it used to look.
+  centre-aligned inside it, so the zone is wide and centred on the rules
+  panel's measured centre (x `.498`) — what must sit on the painted panel
+  is each rendered *line*, and `_test_rules_lines_fit_the_painted_panel`
+  models exactly that: it greedily wraps each library card's plain text at
+  the zone's pixel width and asserts per line against the painted pixels.
+  `_test_rules_zone_is_centred_on_the_panel` pins the zone centre to the
+  painted centre — an off-centre zone renders every centred line visibly
+  left or right of the panel's middle.
 
-The badge centres carry a deliberate `.007` downward nudge relative to the
-icons' measured pixel centres: digits have no descender, so a Label centring
-its full line box parks the glyph optically high in a circle or shield.
-`RULES_SIZE` is `8`, chosen by rendering rather than arithmetic: nothing
-about it can be derived from the zone's dimensions alone.
+**The title is an `ArcTitleLabel`** (`scripts/ui/arc_title_label.gd`), not a
+flat Label: the banner is a shallow arch — midline highest mid-span
+(y `.088`), sagging toward both ends — so `TITLE_ZONE` is centred on the
+apex and each glyph is offset down a parabola (`TITLE_ARC_BOW`, the measured
+sag at the zone edge as a fraction of zone width). Glyphs stay upright; at
+this bow the tangent rotation would move nothing visibly. A flat title
+across the arch read as pasted on — flagged from an in-game screenshot.
+
+`COST_CENTRE` and `TYPE_ZONE` carry a deliberate `.005`-`.007` downward
+nudge relative to their icons' measured pixel centres: caps and digits have
+no descender, so a Label centring its full line box parks the glyph
+optically high in the icon.
+`RULES_SIZE` is `11`, chosen by rendering rather than arithmetic: `10` read
+lost in the master template's tall panel. Nothing about it can be derived
+from the zone's dimensions alone.
 
 **Card-face layout cannot be verified by tests.** An assertion that
-`_value_label.position` equals the template zone proves the code matches the
+`_type_label.position` equals the template zone proves the code matches the
 constants — and it is the constants that are the guess. Judge it from a
 render:
 
@@ -179,13 +203,16 @@ lands as roughly 444x667 real pixels in the PNG. Run it **non-headless** —
 "Verifying animation" below, and it has the same shape: green tests, wrong
 picture.
 
-A state indicator drawn on top of an element that already has that colour
-needs measuring, not eyeballing. `set_combo_armed()` tints the frame with
-`COMBO_ARMED_TINT = Color(1.30, 1.20, 0.88)` — a 30% overbright warm push — on
-a frame that is already gold. An earlier version lerped toward gold instead;
-it satisfied the `!= Color.WHITE` assertion but moved mean rendered gold luma
-from 167.4 to 170.1, a 1.6% change that read as nothing at all in the capture.
-The test passed either way — only the render told them apart.
+A state indicator drawn on top of an element needs measuring, not
+eyeballing. `set_combo_armed()` tints the frame with
+`COMBO_ARMED_TINT = Color(1.30, 1.20, 0.88)` — a 30% overbright warm push.
+On the old gold frame an earlier version lerped toward gold instead; it
+satisfied the `!= Color.WHITE` assertion but moved mean rendered gold luma
+from 167.4 to 170.1, a 1.6% change that read as nothing at all in the
+capture. The test passed either way — only the render told them apart. On
+the master template the same overbright warm push turns the neutral steel
+trim brass-gold — verified against the capture's armed/un-armed pair, it
+reads even more clearly than it did on gold.
 
 Frame and illustration `.import` files must keep `mipmaps/generate=true`.
 Cards draw at a 5x (frame) and 10x (illustration) downscale while swaying and
@@ -414,7 +441,7 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 558 headless checks. What is
+Playable single battle, fully art-directed, 566 headless checks. What is
 conspicuously still placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen
