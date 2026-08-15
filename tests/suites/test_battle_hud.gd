@@ -46,5 +46,5 @@ func _test_continue_signal_and_focus(t: TestRunner) -> void:
 func _test_enemy_name(t: TestRunner) -> void:
 	var hud := BattleHud.new()
 	hud.set_enemy_name("Kickboxer")
-	t.check_eq(hud.debug_enemy_panel().fighter_name(), "Kickboxer", "the enemy panel shows the opponent's real name")
+	t.check_eq(hud.debug_enemy_panel().fighter_name(), "KICKBOXER", "the enemy panel shows the opponent's real name")
 	hud.free()

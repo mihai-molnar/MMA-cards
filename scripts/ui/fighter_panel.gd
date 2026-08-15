@@ -66,8 +66,8 @@ static func shake_amplitude(amount: int) -> float:
 
 ## The panel is built once with a placeholder name; the run swaps in each
 ## opponent's real name at fight start.
-func set_fighter_name(name: String) -> void:
-	_name_label.text = name
+func set_fighter_name(p_name: String) -> void:
+	_name_label.text = p_name.to_upper()
 
 func fighter_name() -> String:
 	return _name_label.text

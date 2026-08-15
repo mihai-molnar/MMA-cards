@@ -29,5 +29,5 @@ func intent_text(enemy: Fighter, target: Fighter) -> String:
 	for effect: CardEffect in effects:
 		if effect is ApplyStatusEffect:
 			var status := effect as ApplyStatusEffect
-			return "%s +%d %s" % [label, status.stacks, StatusRegistry.display_name(status.status_id)]
+			return "%s +%d %s" % [label, status.stacks, StatusRegistry.display_name(status.status_id).to_upper()]
 	return label

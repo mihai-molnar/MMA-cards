@@ -81,7 +81,7 @@ func _build() -> void:
 	_turn_label = _add_label("TURN 1", Vector2(24, 20), 20)
 
 	# Wide enough for the longest multi-move telegraph
-	# ("INTENT: ATTACK 10 + BLOCK 10") without clipping; right-aligned so
+	# ("INTENT: BLOCK 10 + BUFF +2 STR") without clipping; right-aligned so
 	# growth extends leftward into empty space.
 	_intent_label = _add_label("", Vector2(620, 20), 20)
 	_intent_label.size = Vector2(500, 28)
@@ -208,8 +208,8 @@ func suppress_enemy_guard_pulse() -> void:
 	_enemy_panel.suppress_next_guard_pulse()
 
 ## The run swaps the real opponent name in at each fight start.
-func set_enemy_name(name: String) -> void:
-	_enemy_panel.set_fighter_name(name)
+func set_enemy_name(p_name: String) -> void:
+	_enemy_panel.set_fighter_name(p_name)
 
 ## Test hooks -- banner internals the suites assert without walking children.
 func debug_result_text() -> String:
