@@ -38,6 +38,20 @@ const BRAWLER_BUFF_STRENGTH: int = 2
 ## 2 turns means: live during the buff turn AND the following attack turn.
 const BRAWLER_BUFF_DURATION: int = 2
 
+const KICKBOXER_MAX_HP: int = 56
+## The signature move: chip damage plus Leg Injury on the player, mirroring
+## the player's own Low Kick (shared LEG_INJURY_* constants keep the mirror
+## exact by construction).
+const KICKBOXER_LEG_KICK_DAMAGE: int = 5
+const KICKBOXER_ATTACK_DAMAGE: int = 10
+const KICKBOXER_GUARD_AMOUNT: int = 10
+const KICKBOXER_BUFF_STRENGTH: int = 2
+const KICKBOXER_BUFF_DURATION: int = 2
+
+## The run: opponent ids fought in order. A future map replaces how the
+## next id is chosen (see RunState); this array is the linear placeholder.
+const RUN_OPPONENTS: Array[StringName] = [&"brawler", &"kickboxer"]
+
 ## Combo bonus = floori(sum_of_base_damage * COMBO_BONUS_RATIO)
 const COMBO_BONUS_RATIO: float = 0.5
 ## Each strength stack adds this fraction of base outgoing damage.
