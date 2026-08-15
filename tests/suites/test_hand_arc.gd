@@ -7,7 +7,7 @@ func run(t: TestRunner) -> void:
 	_test_single_card(t)
 	_test_empty_hand(t)
 	_test_clear_of_end_turn_button(t)
-	_test_clear_of_ap_label(t)
+	_test_clear_of_draw_label(t)
 	_test_clear_hover(t)
 	_test_layout_invariants_across_hand_sizes(t)
 	_test_hand_size_ceiling(t)
@@ -92,25 +92,31 @@ func _test_clear_of_end_turn_button(t: TestRunner) -> void:
 		"the fan stays clear of the End Turn button (right edge %f)" % right_edge)
 	view.free()
 
-## Mirror of _test_clear_of_end_turn_button for the AP label, bottom-left.
-## Previously nothing checked this side at all -- the reflow pushed both
-## corner controls toward the edges, and while the End Turn side was the
-## tighter of the two (see above), the left side is a real constraint now
-## too, not a formality.
-func _test_clear_of_ap_label(t: TestRunner) -> void:
+## Mirror of _test_clear_of_end_turn_button for the draw-pile label,
+## bottom-left. Previously nothing checked this side at all -- the reflow
+## pushed both corner controls toward the edges, and while the End Turn side
+## was the tighter of the two (see above), the left side is a real
+## constraint now too, not a formality. (Retargeted from the old bottom-left
+## AP text label to the draw-pile label beneath it: the AP readout moved
+## into the FighterPanel's icon cluster, but the draw label still sits at
+## the same corner and is checked by the same rotated-silhouette method.)
+func _test_clear_of_draw_label(t: TestRunner) -> void:
 	var font: Font = ThemeDB.fallback_font
-	var ap_text: String = "AP  %d / %d" % [BattleConfig.AP_PER_TURN, BattleConfig.AP_PER_TURN]
-	var ap_right_edge: float = BattleHud.AP_LABEL_AT.x \
-		+ font.get_string_size(ap_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+	var deck_total: int = 0
+	for copies: int in BattleConfig.DECK_COMPOSITION.values():
+		deck_total += copies
+	var draw_text: String = "draw %d" % deck_total
+	var draw_right_edge: float = BattleHud.DRAW_LABEL_AT.x \
+		+ font.get_string_size(draw_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 
 	var view: HandView = _hand_with([&"jab", &"straight", &"jab", &"block", &"straight"])
 	var leftmost: CardView = view.get_child(0) as CardView
 	var left_edge: float = HandView.rotated_left_edge_at_y(
 		leftmost.rest_position.x, leftmost.rest_position.y, leftmost.rest_rotation,
-		BattleHud.AP_LABEL_AT.y)
-	t.check(left_edge > ap_right_edge,
-		"the fan stays clear of the AP label (left edge %f, label right edge %f)" % [
-			left_edge, ap_right_edge])
+		BattleHud.DRAW_LABEL_AT.y)
+	t.check(left_edge > draw_right_edge,
+		"the fan stays clear of the draw label (left edge %f, label right edge %f)" % [
+			left_edge, draw_right_edge])
 	view.free()
 
 func _test_clear_hover(t: TestRunner) -> void:

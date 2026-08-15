@@ -13,16 +13,18 @@ func run(t: TestRunner) -> void:
 	_test_suppressed_guard_pulse_reads_as_none(t)
 	_test_suppress_flag_does_not_affect_damage(t)
 	_test_suppress_flag_clears_after_one_update(t)
+	_test_hp_value_overflow_rule(t)
+	_test_ap_only_on_player_panel(t)
 
 func _new_panel(align_right: bool) -> FighterPanel:
-	return FighterPanel.create("Enemy", Color(0.85, 0.25, 0.25), align_right)
+	return FighterPanel.create("Enemy", align_right, not align_right)
 
 func _test_initial_display(t: TestRunner) -> void:
 	var panel: FighterPanel = _new_panel(true)
 	var fighter := Fighter.new("Enemy", 48)
 	panel.update(fighter)
 	t.check(panel.debug_hp_text().contains("48"), "hp text shows current hp")
-	t.check(panel.debug_hp_text().contains("ENEMY"), "hp text names the fighter")
+	t.check_eq(panel.fighter_name(), "ENEMY", "the name is stored, not painted on the hp row")
 	t.check_eq(panel.debug_last_pulse_kind, &"none", "the first update never pulses")
 	panel.free()
 
@@ -31,7 +33,7 @@ func _test_initial_display(t: TestRunner) -> void:
 ## text line as before. The number beside the icon is what the registry says
 ## to show -- remaining TURNS for leg injury, counting down each turn.
 func _test_status_icons_show_their_countdown(t: TestRunner) -> void:
-	var panel: FighterPanel = FighterPanel.create("Enemy", Color(0.8, 0.3, 0.3), true)
+	var panel: FighterPanel = FighterPanel.create("Enemy", true, false)
 	var fighter := Fighter.new("Enemy", 48)
 	fighter.statuses.apply(&"leg_injury", 1, 3)
 	fighter.statuses.apply(&"strength", 2, 2)
@@ -166,3 +168,24 @@ func _test_suppress_flag_clears_after_one_update(t: TestRunner) -> void:
 	t.check_eq(panel.debug_last_pulse_amount, 5,
 		"the following absorb reports its own amount, undiminished")
 	panel.free()
+
+func _test_hp_value_overflow_rule(t: TestRunner) -> void:
+	var panel := FighterPanel.create("Player", false, true)
+	var fighter := Fighter.new("Player", 50)
+	panel.update(fighter)
+	t.check(not panel.debug_value_overflowed(), "a short hp value centres in the icon window")
+	var big := Fighter.new("Player", 5000)
+	big.hp = 5000
+	panel.update(big)
+	t.check(panel.debug_value_overflowed(), "an overlong value anchors at the icon centre and grows right")
+	panel.free()
+
+func _test_ap_only_on_player_panel(t: TestRunner) -> void:
+	var player := FighterPanel.create("Player", false, true)
+	player.update_ap(2, 3)
+	t.check_eq(player.debug_ap_text(), "2 / 3", "the player panel shows AP inside the bolt")
+	var enemy := FighterPanel.create("Enemy", true, false)
+	enemy.update_ap(2, 3)
+	t.check_eq(enemy.debug_ap_text(), "", "the enemy panel has no AP readout")
+	player.free()
+	enemy.free()

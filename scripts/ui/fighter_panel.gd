@@ -1,22 +1,31 @@
 class_name FighterPanel
 extends Control
 
-## One fighter's rectangle, name, HP and status badges, plus every bit of damage
-## feedback. Instantiated twice — player on the left, enemy on the right, mirrored
-## by `align_right` — so the animation exists once rather than in two copies that
-## can drift apart.
+## One fighter's HP heart, AP bolt, guard badge and status badges, plus every
+## bit of damage feedback. Instantiated twice — player on the left, enemy on
+## the right, mirrored by `align_right` — so the animation exists once rather
+## than in two copies that can drift apart.
 ##
 ## `fighters_changed` carries no payload, so rather than changing BattleState for a
 ## cosmetic feature this panel remembers the previous hp/guard and diffs them.
 
 const PANEL_SIZE: Vector2 = Vector2(210, 176)
-const RECT_SIZE: Vector2 = Vector2(104, 120)
+const ICON_SIZE: float = 72.0
+const AP_ICON_SIZE: float = 56.0
 const STATUS_ICON_SIZE: float = 24.0
 const STATUS_ICON_GAP: float = 4.0
 
 const DAMAGE_FLASH: Color = Color(1.0, 0.35, 0.35)
 const GUARD_FLASH: Color = Color(0.55, 0.85, 1.0)
 const STATUS_COLOR: Color = Color(1.0, 0.82, 0.40)
+
+## Fraction of the icon's width treated as its "dark window" for
+## _layout_value_label's fitting rule. Measured against the Kreon display
+## font actually rendered here (HudText.FONT), not guessed: "50 / 50" at the
+## hp value's size 16 is 51px wide, which a smaller fraction (e.g. 0.62,
+## 44.6px at ICON_SIZE) would wrongly flag as overflowing a perfectly
+## ordinary two-digit/two-digit reading.
+const VALUE_WINDOW_FRACTION: float = 0.75
 
 var align_right: bool = false
 
@@ -25,33 +34,36 @@ var align_right: bool = false
 var debug_last_pulse_kind: StringName = &"none"
 var debug_last_pulse_amount: int = 0
 
-var _rect: ColorRect
-var _name_label: Label
-var _hp_label: Label
 var _status_label: Label
 ## Icon + countdown badges for statuses that have an icon asset, sitting
-## along the rect's bottom edge. Parented to the rect (like the name) so the
+## in a row below the icon cluster. Parented to the icon cluster so the
 ## damage shake carries them.
 var _status_icon_row: HBoxContainer
 ## What the row currently displays, as [[id, number], ...]. Test hook.
 var _status_icon_entries: Array = []
-var _rect_home: Vector2 = Vector2.ZERO
-## The rect's colour at build time -- what _flash_rect must always return to.
-## Reading _rect.color live instead (the old bug) captures whatever colour a
-## still-in-flight flash tween happens to be passing through, so two pulses
-## inside one flash window ratchet the "home" colour toward DAMAGE_FLASH a
-## little more each time and never reset.
-var _rect_colour_home: Color = Color.WHITE
-var _flash_tween: Tween
+
+var _fighter_name: String = ""
+var _show_ap: bool = false
+var _icon_cluster: Control
+var _hp_icon: TextureRect
+var _hp_value: Label
+var _guard_label: Label
+var _ap_icon: TextureRect
+var _ap_value: Label = null
+## The cluster's rest position -- what every shake returns to.
+var _cluster_home: Vector2 = Vector2.ZERO
+var _cluster_tween: Tween
 
 var _last_hp: int = -1
 var _last_guard: int = 0
 var _suppress_guard_pulse: bool = false
 
-static func create(display_name: String, rect_color: Color, p_align_right: bool) -> FighterPanel:
+static func create(display_name: String, p_align_right: bool, p_show_ap: bool) -> FighterPanel:
 	var panel := FighterPanel.new()
 	panel.align_right = p_align_right
-	panel._build(display_name, rect_color)
+	panel._show_ap = p_show_ap
+	panel._fighter_name = display_name.to_upper()
+	panel._build()
 	return panel
 
 func _init() -> void:
@@ -67,56 +79,75 @@ static func shake_amplitude(amount: int) -> float:
 ## The panel is built once with a placeholder name; the run swaps in each
 ## opponent's real name at fight start.
 func set_fighter_name(p_name: String) -> void:
-	_name_label.text = p_name.to_upper()
+	_fighter_name = p_name.to_upper()
 
 func fighter_name() -> String:
-	return _name_label.text
+	return _fighter_name
 
-func _build(display_name: String, rect_color: Color) -> void:
-	_rect = ColorRect.new()
-	_rect.color = rect_color
-	_rect.size = RECT_SIZE
-	_rect.position = Vector2(PANEL_SIZE.x - RECT_SIZE.x, 0.0) if align_right else Vector2.ZERO
-	_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_rect_home = _rect.position
-	_rect_colour_home = rect_color
-	add_child(_rect)
+func _build() -> void:
+	var icon_x: float = PANEL_SIZE.x - ICON_SIZE if align_right else 0.0
 
-	# The fighter's name sits inside its rectangle, centred, and is parented to
-	# the rectangle itself (not a FighterPanel sibling) so the damage shake --
-	# which tweens `_rect.position` -- carries the name along with it instead
-	# of leaving it behind mid-hit. Position is therefore rect-relative.
-	_name_label = Label.new()
-	_name_label.text = display_name.to_upper()
-	_name_label.add_theme_font_size_override("font_size", 16)
-	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_name_label.position = Vector2(0.0, RECT_SIZE.y / 2.0 - 12.0)
-	_name_label.size = Vector2(RECT_SIZE.x, 24.0)
-	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_rect.add_child(_name_label)
+	# Everything that shakes on a hit lives in one cluster with one stored
+	# home -- the icon stands in for the old fighter rectangle.
+	_icon_cluster = Control.new()
+	_icon_cluster.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_cluster.size = PANEL_SIZE
+	_cluster_home = _icon_cluster.position
+	add_child(_icon_cluster)
 
-	# Font sizes dropped from 22/16 to 18/14 alongside the panel shrink: the
-	# text itself still fits either way (measured against ThemeDB's fallback
-	# font, "PLAYER  50 / 50" is 161px wide at 22, comfortably under the new
-	# PANEL_SIZE.x = 210), but the smaller sizes trim a few pixels off the
-	# status row's vertical footprint -- worth having given how close a
-	# hovered outer card's lifted top edge (~241, see HandView's doc
-	# comments) sits to these panels' bottom (232).
-	_hp_label = _make_row_label(18, RECT_SIZE.y + 12.0)
-	_status_label = _make_row_label(14, RECT_SIZE.y + 44.0)
-	_status_label.modulate = STATUS_COLOR
+	_hp_icon = _make_icon(&"hp", Vector2(icon_x, 0.0), ICON_SIZE)
+	_hp_value = Label.new()
+	HudText.style(_hp_value, 16)
+	_hp_value.position = Vector2(icon_x, ICON_SIZE * 0.36)
+	_hp_value.size = Vector2(ICON_SIZE, 22.0)
+	_hp_value.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_cluster.add_child(_hp_value)
 
-	# Along the rect's bottom edge, inside it -- "under the fighter" without
-	# growing the panel's footprint (the hovered cards' lifted tops already
-	# sit close beneath these panels; see the hud's layout notes).
+	_guard_label = Label.new()
+	HudText.style(_guard_label, 14)
+	_guard_label.add_theme_color_override("font_color", GUARD_FLASH)
+	_guard_label.position = Vector2(icon_x, 74.0)
+	_guard_label.size = Vector2(ICON_SIZE, 20.0)
+	_guard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_guard_label.visible = false
+	_guard_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_cluster.add_child(_guard_label)
+
+	if _show_ap:
+		var ap_x: float = icon_x + (ICON_SIZE - AP_ICON_SIZE) / 2.0
+		_ap_icon = _make_icon(&"ap", Vector2(ap_x, 96.0), AP_ICON_SIZE)
+		_ap_value = Label.new()
+		HudText.style(_ap_value, 13)
+		_ap_value.position = Vector2(ap_x, 96.0 + AP_ICON_SIZE * 0.36)
+		_ap_value.size = Vector2(AP_ICON_SIZE, 18.0)
+		_ap_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_ap_value.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_icon_cluster.add_child(_ap_value)
+
+	var rows_y: float = 150.0 if _show_ap else 120.0
+	_status_label = _make_row_label(14, rows_y + 26.0)
+	HudText.style(_status_label, 14)
+	_status_label.add_theme_color_override("font_color", STATUS_COLOR)
+
 	_status_icon_row = HBoxContainer.new()
 	_status_icon_row.add_theme_constant_override("separation", int(STATUS_ICON_GAP))
-	_status_icon_row.position = Vector2(4.0, RECT_SIZE.y - STATUS_ICON_SIZE - 4.0)
-	_status_icon_row.size = Vector2(RECT_SIZE.x - 8.0, STATUS_ICON_SIZE)
+	_status_icon_row.position = Vector2(0.0, rows_y)
+	_status_icon_row.size = Vector2(PANEL_SIZE.x, STATUS_ICON_SIZE)
 	_status_icon_row.alignment = BoxContainer.ALIGNMENT_END if align_right \
 		else BoxContainer.ALIGNMENT_BEGIN
 	_status_icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_rect.add_child(_status_icon_row)
+	_icon_cluster.add_child(_status_icon_row)
+
+func _make_icon(icon_name: StringName, at: Vector2, icon_size: float) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = CardArt.ui_icon_for(icon_name)
+	icon.position = at
+	icon.size = Vector2.ONE * icon_size
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_cluster.add_child(icon)
+	return icon
 
 func _make_row_label(font_size: int, y: float) -> Label:
 	var label := Label.new()
@@ -130,9 +161,10 @@ func _make_row_label(font_size: int, y: float) -> Label:
 
 ## Refreshes the display and reacts to whatever changed since the last call.
 func update(fighter: Fighter) -> void:
-	_hp_label.text = "%s  %d / %d" % [
-		fighter.display_name.to_upper(), fighter.hp, fighter.max_hp
-	]
+	_hp_value.text = "%d / %d" % [fighter.hp, fighter.max_hp]
+	_layout_value_label(_hp_value, _hp_icon.position.x, ICON_SIZE)
+	_guard_label.text = "+%d" % fighter.guard
+	_guard_label.visible = fighter.guard > 0
 	_status_label.text = _status_line(fighter)
 	_rebuild_status_icons(fighter)
 
@@ -173,12 +205,11 @@ func update(fighter: Fighter) -> void:
 func suppress_next_guard_pulse() -> void:
 	_suppress_guard_pulse = true
 
-## Guard and icon-less statuses, omitted entirely when zero. A status with
-## an icon renders in _status_icon_row instead -- never in both places.
+## Icon-less statuses, omitted entirely when none. A status with an icon
+## renders in _status_icon_row instead -- never in both places. Guard has
+## its own label now, so it does not appear here.
 func _status_line(fighter: Fighter) -> String:
 	var parts: Array[String] = []
-	if fighter.guard > 0:
-		parts.append("GUARD %d" % fighter.guard)
 	for id: StringName in fighter.statuses.ids():
 		if CardArt.status_icon_for(id) != null:
 			continue
@@ -222,19 +253,19 @@ func _rebuild_status_icons(fighter: Fighter) -> void:
 func debug_status_icons() -> Array:
 	return _status_icon_entries
 
-## Centre of the fighter rectangle, in the panel's parent coordinate space.
-## Used as the anchor a played card lunges toward.
+## Centre of the hp icon in the panel's parent space -- the floater/particle
+## anchor. Card lunges now aim at the PORTRAITS (FightStage centres).
 func centre_point() -> Vector2:
-	return position + _rect_home + RECT_SIZE / 2.0
+	return position + _cluster_home + _hp_icon.position + Vector2.ONE * ICON_SIZE / 2.0
 
 func _pulse_damage(amount: int) -> void:
 	if not is_inside_tree():
 		return
-	_punch(_hp_label, DAMAGE_FLASH)
+	_punch(_hp_value, DAMAGE_FLASH)
 	_float_number("-%d" % amount, DAMAGE_FLASH)
 	_shake(shake_amplitude(amount))
-	_flash_rect(DAMAGE_FLASH)
-	ParticleBurst.spawn(self, _rect_home + RECT_SIZE / 2.0, DAMAGE_FLASH, Juice.PARTICLES_HIT)
+	ParticleBurst.spawn(self, _cluster_home + _hp_icon.position + Vector2.ONE * ICON_SIZE / 2.0,
+		DAMAGE_FLASH, Juice.PARTICLES_HIT)
 
 func _pulse_guard(amount: int) -> void:
 	if not is_inside_tree():
@@ -260,7 +291,7 @@ func _float_number(text: String, colour: Color) -> void:
 	floater.text = text
 	floater.add_theme_font_size_override("font_size", 22)
 	floater.modulate = colour
-	floater.position = _hp_label.position - Vector2(0.0, Juice.NUMBER_RISE * 0.4)
+	floater.position = _hp_value.position - Vector2(0.0, Juice.NUMBER_RISE * 0.4)
 	floater.size = Vector2(PANEL_SIZE.x, 28.0)
 	floater.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
 	floater.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -281,30 +312,52 @@ func _float_number(text: String, colour: Color) -> void:
 	tween.parallel().tween_property(floater, "modulate:a", 0.0, Juice.NUMBER_TIME)
 	tween.chain().tween_callback(floater.queue_free)
 
-## Hard flash on the struck fighter's rectangle, then back to its own colour.
-func _flash_rect(colour: Color) -> void:
-	if not is_inside_tree():
-		return
-	# Kill any flash still in flight before starting another, same as _shake's
-	# sibling tween below -- otherwise two pulses inside one flash window both
-	# drive _rect.color at once and fight each other.
-	if _flash_tween != null and _flash_tween.is_valid():
-		_flash_tween.kill()
-	_flash_tween = create_tween()
-	_flash_tween.tween_property(_rect, "color", colour, Juice.FLASH_TIME * 0.35)
-	_flash_tween.tween_property(_rect, "color", _rect_colour_home, Juice.FLASH_TIME)
-
 func _shake(amplitude: float) -> void:
+	if _cluster_tween != null and _cluster_tween.is_valid():
+		_cluster_tween.kill()
+		_icon_cluster.position = _cluster_home
 	var step_time: float = Juice.SHAKE_TIME / float(Juice.SHAKE_STEPS + 1)
-	var tween := create_tween()
+	_cluster_tween = create_tween()
 	for i: int in range(Juice.SHAKE_STEPS):
 		var direction: float = -1.0 if i % 2 == 0 else 1.0
-		tween.tween_property(_rect, "position",
-			_rect_home + Vector2(direction * amplitude, 0.0), step_time)
-	tween.tween_property(_rect, "position", _rect_home, step_time)
+		_cluster_tween.tween_property(_icon_cluster, "position",
+			_cluster_home + Vector2(direction * amplitude, 0.0), step_time)
+	_cluster_tween.tween_property(_icon_cluster, "position", _cluster_home, step_time)
+
+var _value_overflowed: bool = false
+
+## The user-specified fitting rule: the value centres in the icon's dark
+## window; when it is too wide it anchors at the icon's horizontal centre
+## and grows rightward instead.
+func _layout_value_label(label: Label, icon_x: float, icon_size: float) -> void:
+	var font: Font = label.get_theme_font("font")
+	var width: float = font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT,
+		-1, label.get_theme_font_size("font_size")).x
+	var window: float = icon_size * VALUE_WINDOW_FRACTION
+	_value_overflowed = width > window
+	if _value_overflowed:
+		label.position.x = icon_x + icon_size / 2.0
+		label.size.x = width + 4.0
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	else:
+		label.position.x = icon_x + (icon_size - window) / 2.0
+		label.size.x = window
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+func debug_value_overflowed() -> bool:
+	return _value_overflowed
+
+func update_ap(current: int, maximum: int) -> void:
+	if not _show_ap:
+		return
+	_ap_value.text = "%d / %d" % [current, maximum]
+	_layout_value_label(_ap_value, _ap_icon.position.x, AP_ICON_SIZE)
+
+func debug_ap_text() -> String:
+	return "" if _ap_value == null else _ap_value.text
 
 func debug_hp_text() -> String:
-	return _hp_label.text
+	return _hp_value.text
 
 func debug_status_text() -> String:
 	return _status_label.text

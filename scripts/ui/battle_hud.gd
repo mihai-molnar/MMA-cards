@@ -89,11 +89,11 @@ func _build() -> void:
 	_intent_label.modulate = Color(1.0, 0.75, 0.35)
 
 	# Fighters face each other: player left, enemy right, numbers under each.
-	_player_panel = FighterPanel.create("Player", PLAYER_COLOR, false)
+	_player_panel = FighterPanel.create("Player", false, true)
 	_player_panel.position = PLAYER_PANEL_AT
 	add_child(_player_panel)
 
-	_enemy_panel = FighterPanel.create("Enemy", ENEMY_COLOR, true)
+	_enemy_panel = FighterPanel.create("Enemy", true, false)
 	_enemy_panel.position = ENEMY_PANEL_AT
 	add_child(_enemy_panel)
 
