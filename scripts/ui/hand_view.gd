@@ -6,6 +6,11 @@ extends Control
 ## legality — affordability and combo state come from BattleState.
 
 signal card_chosen(index: int)
+## Relays a card's effective hover change outward (stale hover-offs are
+## filtered first, same as the parting logic below). BattleView drives the
+## status tooltip from this -- a card cannot own the tooltip itself, because
+## CardView clips its contents.
+signal card_hovered(view: CardView, hovered: bool)
 
 const MAX_FAN_ANGLE_DEG: float = 12.0
 const FAN_ARCH_HEIGHT: float = 20.0
@@ -247,6 +252,7 @@ func _on_card_hover_changed(view: CardView, hovered: bool) -> void:
 		# Stale hover-off from a card the cursor already left; the parting for
 		# the currently hovered card must stay exactly as it is.
 		return
+	card_hovered.emit(view, hovered)
 	var hovered_index: int = -1 if _hovered_view == null else _hovered_view.get_index()
 	for index: int in range(get_child_count()):
 		var card: CardView = get_child(index) as CardView

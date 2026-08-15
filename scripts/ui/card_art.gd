@@ -17,6 +17,7 @@ extends RefCounted
 
 const ILLUSTRATION_DIR: String = "res://assets/illustrations"
 const FRAME_DIR: String = "res://assets/frames"
+const ICON_DIR: String = "res://assets/icons"
 
 ## Keyed by RESOLVED PATH, not by id or variant. Keying by the bare name would
 ## collide the day someone adds a card with id "attack": its illustration and
@@ -38,6 +39,12 @@ static func illustration_for(card_id: StringName) -> Texture2D:
 ## on every card in the hand every rebuild.
 static func frame_for(variant: StringName) -> Texture2D:
 	return _load("%s/%s.png" % [FRAME_DIR, variant])
+
+## Returns null when no icon exists for this status -- a legitimate
+## fallback, not an error: FighterPanel keeps an icon-less status in its
+## text status line instead.
+static func status_icon_for(status_id: StringName) -> Texture2D:
+	return _load("%s/%s.png" % [ICON_DIR, status_id])
 
 static func _load(path: String) -> Texture2D:
 	if _cache.has(path):

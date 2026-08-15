@@ -102,9 +102,11 @@ const RULES_COLOR: Color = Color(0.88, 0.87, 0.84)
 ## The numbers inside the rules text, coloured so they pop the way the old
 ## value badge did: damage in the frame's red accent pushed bright enough to
 ## read on the dark panel, guard in a cool blue that cannot be mistaken for
-## it.
+## it. Status KEYWORDS ("Leg Injury") render yellow, Slay-the-Spire style --
+## the signal that hovering the card will explain the word.
 const RULES_DAMAGE_COLOR: Color = Color(1.00, 0.40, 0.33)
 const RULES_GUARD_COLOR: Color = Color(0.45, 0.72, 1.00)
+const RULES_KEYWORD_COLOR: Color = Color(1.00, 0.84, 0.35)
 
 const OUTLINE_SIZE: int = 4
 const OUTLINE_COLOR: Color = Color(0.05, 0.03, 0.02, 0.9)
@@ -136,40 +138,99 @@ static func rules_plain(card: CardData) -> String:
 			parts.append(description)
 	return " ".join(parts)
 
-## The rules text with every number wrapped in a colour tag: damage red,
-## guard blue. Each number is coloured by the SENTENCE it sits in -- a mixed
-## card colours each number independently -- and a sentence naming neither
-## keyword ("Combo: +7 right after Jab.") falls back to the card's variant,
-## so the number still reads as what the card is. The numbers themselves are
-## the plain text's; markup adds no visible characters, so the label wraps
-## exactly the string the wrap model measures.
+## The rules text with its numbers and keywords wrapped in colour tags:
+## damage numbers red, guard numbers blue, status names yellow. Each number
+## is coloured by the SENTENCE it sits in -- a mixed card colours each
+## number independently. A sentence naming a status keeps its numbers PLAIN
+## (the 1 in "for 1 turn" is a duration, not damage), and a sentence naming
+## nothing at all ("Combo: +7 right after Jab.") falls back to the card's
+## variant, so the number still reads as what the card is. Markup adds no
+## visible characters, so the label wraps exactly the string the wrap model
+## measures.
 static func rules_bbcode(card: CardData) -> String:
 	var plain: String = rules_plain(card)
 	var fallback: Color = RULES_GUARD_COLOR if variant_for(card) == DEFENSE \
 		else RULES_DAMAGE_COLOR
+
+	# Every span to wrap, as [start, end, colour]. Numbers and keywords never
+	# overlap -- no registered status name contains a digit.
+	var spans: Array = []
 	var number_pattern: RegEx = RegEx.create_from_string("[+\\-]?\\d+")
+	for found: RegExMatch in number_pattern.search_all(plain):
+		var color: Variant = _number_color(plain, found.get_start(), fallback)
+		if color != null:
+			spans.append([found.get_start(), found.get_end(), color])
+	for id: StringName in _keyword_ids():
+		for found: RegExMatch in _keyword_pattern(id).search_all(plain):
+			spans.append([found.get_start(), found.get_end(), RULES_KEYWORD_COLOR])
+
+	spans.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	var result: String = ""
 	var cursor: int = 0
-	for found: RegExMatch in number_pattern.search_all(plain):
-		var color: Color = _number_color(plain, found.get_start(), fallback)
-		result += plain.substr(cursor, found.get_start() - cursor)
-		result += "[color=#%s]%s[/color]" % [color.to_html(false), found.get_string()]
-		cursor = found.get_end()
+	for span: Array in spans:
+		result += plain.substr(cursor, span[0] - cursor)
+		result += "[color=#%s]%s[/color]" % [
+			(span[2] as Color).to_html(false), plain.substr(span[0], span[1] - span[0])]
+		cursor = span[1]
 	result += plain.substr(cursor)
 	return result
 
-## The colour for a number at `at`: scan its own sentence (between the
-## surrounding full stops) for the damage/guard keywords.
-static func _number_color(text: String, at: int, fallback: Color) -> Color:
+## Which keywords this card's text names -- what the hover tooltip explains
+## and rules_bbcode colours yellow. Every registered status is a keyword;
+## COMBO_KEYWORD is the one game-rule keyword without a status behind it.
+## Word-bounded, so STR never fires inside STRAIGHT.
+static func keywords_in(card: CardData) -> Array[StringName]:
+	var found: Array[StringName] = []
+	var plain: String = rules_plain(card)
+	for id: StringName in _keyword_ids():
+		if _keyword_pattern(id).search(plain) != null:
+			found.append(id)
+	return found
+
+## The combo mechanic's keyword id. Not a status: its title and description
+## resolve through keyword_title()/keyword_description() below.
+const COMBO_KEYWORD: StringName = &"combo"
+
+static func _keyword_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for id: StringName in StatusRegistry.DEFINITIONS:
+		ids.append(id)
+	ids.append(COMBO_KEYWORD)
+	return ids
+
+## The word printed on cards and as the tooltip's heading.
+static func keyword_title(id: StringName) -> String:
+	return "Combo" if id == COMBO_KEYWORD else StatusRegistry.display_name(id)
+
+## The tooltip's body: statuses describe themselves via the registry; the
+## combo keyword via the rule it names.
+static func keyword_description(id: StringName) -> String:
+	return ComboRule.keyword_description() if id == COMBO_KEYWORD \
+		else StatusRegistry.description(id)
+
+## Case-insensitive, word-bounded matcher for a keyword's display word. The
+## words are plain ("Leg Injury", "STR", "Combo"); if one ever gains a regex
+## metacharacter it must be escaped here.
+static func _keyword_pattern(id: StringName) -> RegEx:
+	return RegEx.create_from_string("(?i)\\b%s\\b" % keyword_title(id))
+
+## The colour for a number at `at` -- or null for no colour at all: scan its
+## own sentence (between the surrounding full stops) for the damage/guard
+## keywords, then for status names.
+static func _number_color(text: String, at: int, fallback: Color) -> Variant:
 	var start: int = text.rfind(".", at) + 1
 	var end: int = text.find(".", at)
 	if end == -1:
 		end = text.length()
-	var sentence: String = text.substr(start, end - start).to_lower()
-	if sentence.contains("damage"):
+	var sentence: String = text.substr(start, end - start)
+	var lowered: String = sentence.to_lower()
+	if lowered.contains("damage"):
 		return RULES_DAMAGE_COLOR
-	if sentence.contains("guard") or sentence.contains("block"):
+	if lowered.contains("guard") or lowered.contains("block"):
 		return RULES_GUARD_COLOR
+	for id: StringName in StatusRegistry.DEFINITIONS:
+		if _keyword_pattern(id).search(sentence) != null:
+			return null
 	return fallback
 
 ## Converts a normalized zone to a pixel rect against a card of `size`.

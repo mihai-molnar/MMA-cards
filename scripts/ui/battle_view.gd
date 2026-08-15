@@ -7,6 +7,7 @@ extends Node2D
 var battle: BattleState
 var hud: BattleHud
 var hand_view: HandView
+var status_tooltip: StatusTooltip
 var screen_fx: ScreenFx
 
 ## Set by _on_card_chosen just before calling battle.play_card(), which emits
@@ -41,7 +42,13 @@ func _build_ui() -> void:
 
 	hand_view = HandView.new()
 	hand_view.card_chosen.connect(_on_card_chosen)
+	hand_view.card_hovered.connect(_on_card_hovered)
 	hud.add_child(hand_view)
+
+	# A sibling of HandView, never a child: rebuild() frees every hand child.
+	# Its own z_index keeps it above hovered and lunging cards.
+	status_tooltip = StatusTooltip.new()
+	hud.add_child(status_tooltip)
 
 	# Attacks fly at the enemy, Block pulls back to the player.
 	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
@@ -59,7 +66,7 @@ func _connect_battle() -> void:
 	battle.ap_changed.connect(_on_ap_changed)
 	battle.hand_changed.connect(_on_hand_changed)
 	battle.fighters_changed.connect(_on_fighters_changed)
-	battle.intent_changed.connect(hud.update_intent)
+	battle.intent_changed.connect(_on_intent_changed)
 	battle.battle_over.connect(_on_battle_over)
 
 func _on_turn_started(turn_number: int) -> void:
@@ -80,7 +87,26 @@ func _on_ap_changed(current: int, maximum: int) -> void:
 func _on_hand_changed() -> void:
 	var deal: bool = _pending_deal
 	_pending_deal = false
+	# The rebuild frees every card view, including a hovered one -- its
+	# hover-off signal dies with it, so the tooltip must be dismissed here.
+	status_tooltip.hide_tooltip()
 	hand_view.rebuild(battle, deal)
+
+## Shows the status tooltip above the hovered card when its text names a
+## registered status (StatusTooltip itself hides for cards that name none).
+## rest_position is in HandView space and the tooltip is a HUD sibling, so
+## offset by HandView's position. The anchor is the ZOOMED card's top-centre
+## -- bottom-centre pivot, so the top rises by the scale delta plus the
+## hover lift -- and the panel hangs above that, clear of the enlarged card.
+func _on_card_hovered(view: CardView, hovered: bool) -> void:
+	if not hovered or view.card == null:
+		status_tooltip.hide_tooltip()
+		return
+	var zoomed_top: float = view.rest_position.y \
+		+ CardView.CARD_SIZE.y * (1.0 - Juice.HOVER_SCALE) - Juice.HOVER_LIFT
+	var anchor: Vector2 = hand_view.position + Vector2(
+		view.rest_position.x + CardView.CARD_SIZE.x / 2.0, zoomed_top)
+	status_tooltip.show_for_card(view.card, anchor)
 
 ## The ENTIRE fighter-side reaction is deferred for a played card -- HP text,
 ## panel flash, damage number, rect shake AND the whole-view impact -- not
@@ -99,6 +125,26 @@ func _on_fighters_changed() -> void:
 		get_tree().create_timer(delay).timeout.connect(_land_fighter_update)
 	else:
 		_land_fighter_update()
+
+## The telegraph obeys the same rule as the fighter panels above: the model
+## re-emits intent synchronously from inside play_card(), while the card is
+## still leaving the hand -- so a Low Kick's halved "ATTACK 4" would appear
+## before the kick visibly lands. Defer by the same impact delay, and
+## re-read the CURRENT intent at fire time rather than capturing the emitted
+## text: an immediate update racing a still-in-flight deferred one (playing
+## a card, then ending the turn inside the delay window) then cannot be
+## overwritten by stale text -- the late timer rewrites the same current
+## value. Enemy-turn updates have no card animation (delay 0) and land
+## immediately, exactly like the fighter update.
+func _on_intent_changed(text: String) -> void:
+	var delay: float = _pending_reaction_delay
+	if delay > 0.0 and is_inside_tree():
+		get_tree().create_timer(delay).timeout.connect(_land_intent_update)
+	else:
+		hud.update_intent(text)
+
+func _land_intent_update() -> void:
+	hud.update_intent(battle.brain.intent_text(battle.enemy, battle.player))
 
 ## FighterPanel diffs hp/guard itself and records what it saw, so the
 ## whole-view impact can be driven from that without BattleState needing a

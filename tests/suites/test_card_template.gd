@@ -11,6 +11,8 @@ func run(t: TestRunner) -> void:
 	_test_rules_lines_fit_the_painted_panel(t)
 	_test_type_text_follows_the_variant(t)
 	_test_rules_bbcode_colors_numbers(t)
+	_test_rules_bbcode_colors_status_keywords(t)
+	_test_keywords_are_found_by_word_boundary(t)
 	_test_pixel_conversion(t)
 
 ## The frame is drawn OVER the illustration, and its art opening is not a
@@ -121,10 +123,11 @@ func _test_rules_bbcode_colors_numbers(t: TestRunner) -> void:
 	t.check_eq(CardTemplate.rules_bbcode(CardLibrary.load_card(&"block")),
 		"Gain [color=#%s]5[/color] guard." % guard_hex,
 		"block's guard number is wrapped in the guard colour")
+	var keyword_hex: String = CardTemplate.RULES_KEYWORD_COLOR.to_html(false)
 	t.check_eq(CardTemplate.rules_bbcode(CardLibrary.load_card(&"straight")),
-		"Deal [color=#%s]9[/color] damage. Combo: [color=#%s]+7[/color] right after Jab." % [
-			damage_hex, damage_hex],
-		"straight's combo bonus takes the damage colour even though its sentence names neither keyword")
+		"Deal [color=#%s]9[/color] damage. [color=#%s]Combo[/color] right after Jab." % [
+			damage_hex, keyword_hex],
+		"straight's Combo is a yellow keyword, its damage number red")
 
 	# A card mixing both keywords colours each number by its own sentence.
 	var mixed := CardData.new()
@@ -134,20 +137,53 @@ func _test_rules_bbcode_colors_numbers(t: TestRunner) -> void:
 			damage_hex, guard_hex],
 		"a mixed card colours damage red and guard blue in the same text")
 
-	# The keyword-less fallback follows the variant, so a defense card's
-	# bare number reads blue.
+	# A number in a sentence naming neither damage nor guard falls back to
+	# the variant, so a defense card's bare number reads blue -- and the
+	# Combo word itself is a keyword, coloured yellow independently.
 	var vague := CardData.new()
 	vague.tags = [&"defense"] as Array[StringName]
 	vague.rules_text = "Combo: +2 right after Jab."
 	t.check_eq(CardTemplate.rules_bbcode(vague),
-		"Combo: [color=#%s]+2[/color] right after Jab." % guard_hex,
-		"a keyword-less sentence on a defense card falls back to the guard colour")
+		"[color=#%s]Combo[/color]: [color=#%s]+2[/color] right after Jab." % [
+			keyword_hex, guard_hex],
+		"a damage/guard-less sentence's number falls back to the variant colour")
 
 	# The plain text is the bbcode with the colour tags stripped -- what the
 	# wrap model below measures, and what the label actually renders.
 	t.check_eq(CardTemplate.rules_plain(CardLibrary.load_card(&"straight")),
-		"Deal 9 damage. Combo: +7 right after Jab.",
+		"Deal 9 damage. Combo right after Jab.",
 		"rules_plain returns the uncoloured text")
+
+## Status names are KEYWORDS: rendered yellow (the tooltip explains them on
+## hover), while a number in a status sentence stays plain -- the 1 in
+## "for 1 turn" is a duration, and painting it damage-red would lie.
+func _test_rules_bbcode_colors_status_keywords(t: TestRunner) -> void:
+	var damage_hex: String = CardTemplate.RULES_DAMAGE_COLOR.to_html(false)
+	var keyword_hex: String = CardTemplate.RULES_KEYWORD_COLOR.to_html(false)
+	t.check_eq(CardTemplate.rules_bbcode(CardLibrary.load_card(&"low_kick")),
+		"Deal [color=#%s]2[/color] damage. Causes [color=#%s]Leg Injury[/color] for 1 turn." % [
+			damage_hex, keyword_hex],
+		"low kick colours its damage red, its keyword yellow, and its duration not at all")
+
+## What the tooltip needs from a card: which registered statuses its text
+## names. Word-bounded, so STR never fires inside STRAIGHT.
+func _test_keywords_are_found_by_word_boundary(t: TestRunner) -> void:
+	t.check_eq(CardTemplate.keywords_in(CardLibrary.load_card(&"low_kick")),
+		[&"leg_injury"] as Array[StringName], "low kick mentions leg injury")
+	t.check_eq(CardTemplate.keywords_in(CardLibrary.load_card(&"jab")),
+		[] as Array[StringName], "jab mentions no keyword")
+	# Combo is a keyword WITHOUT a status behind it -- the keyword table is
+	# not status-only.
+	t.check_eq(CardTemplate.keywords_in(CardLibrary.load_card(&"straight")),
+		[&"combo"] as Array[StringName], "straight mentions the combo keyword")
+
+	var custom := CardData.new()
+	custom.rules_text = "A STRAIGHT strike."
+	t.check_eq(CardTemplate.keywords_in(custom), [] as Array[StringName],
+		"STR inside STRAIGHT is not a keyword match")
+	custom.rules_text = "Gain 2 STR."
+	t.check_eq(CardTemplate.keywords_in(custom), [&"strength"] as Array[StringName],
+		"a word-bounded STR is")
 
 ## Zones are fractions of the card rect, not pixels, so CARD_SIZE can change
 ## without a re-measure. A value outside 0..1 means someone pasted a raw

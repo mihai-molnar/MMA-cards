@@ -7,6 +7,7 @@ extends RefCounted
 
 const DEFINITIONS: Dictionary = {
 	&"strength": preload("res://scripts/core/statuses/strength.gd"),
+	&"leg_injury": preload("res://scripts/core/statuses/leg_injury.gd"),
 }
 
 static func modify_outgoing(bag: StatusBag, amount: int) -> int:
@@ -32,3 +33,19 @@ static func display_name(id: StringName) -> String:
 		return String(id).to_upper()
 	var definition: GDScript = DEFINITIONS[id]
 	return definition.DISPLAY_NAME
+
+## What the status does, in player-facing words -- the hover tooltip's body.
+## Empty for an unregistered id: the tooltip simply has nothing to explain.
+static func description(id: StringName) -> String:
+	if not DEFINITIONS.has(id):
+		return ""
+	var definition: GDScript = DEFINITIONS[id]
+	return definition.description()
+
+## Which number display code prints beside this status: true for a countdown
+## (Leg Injury's remaining turns), false for a magnitude (strength stacks).
+static func shows_turns(id: StringName) -> bool:
+	if not DEFINITIONS.has(id):
+		return false
+	var definition: GDScript = DEFINITIONS[id]
+	return definition.SHOW_TURNS

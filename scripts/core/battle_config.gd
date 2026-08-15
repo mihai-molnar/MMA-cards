@@ -8,11 +8,12 @@ const ENEMY_MAX_HP: int = 48
 const AP_PER_TURN: int = 3
 const HAND_SIZE: int = 5
 
-## Card id -> copies in the starting deck. Totals 12.
+## Card id -> copies in the starting deck. Totals 14.
 const DECK_COMPOSITION: Dictionary = {
 	&"jab": 5,
 	&"straight": 4,
 	&"block": 3,
+	&"low_kick": 2,
 }
 
 const JAB_COST: int = 1
@@ -21,6 +22,15 @@ const STRAIGHT_COST: int = 2
 const STRAIGHT_DAMAGE: int = 9
 const BLOCK_COST: int = 1
 const BLOCK_GUARD: int = 5
+const LOW_KICK_COST: int = 0
+const LOW_KICK_DAMAGE: int = 2
+## Turn countdown for the injury Low Kick applies: 1 means it is live for
+## the opponent's next attack and expires at their turn end -- exactly one
+## weakened attack (status timers decrement at their owner's turn END).
+const LEG_INJURY_TURNS: int = 1
+## Outgoing damage multiplier while leg-injured -- the fighter cannot put
+## weight on the leg.
+const LEG_INJURY_DAMAGE_MULT: float = 0.5
 
 const ENEMY_ATTACK_DAMAGE: int = 8
 const ENEMY_GUARD_AMOUNT: int = 8

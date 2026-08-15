@@ -46,3 +46,12 @@ func describe() -> String:
 	for tag: StringName in sequence:
 		names.append(String(tag).to_upper())
 	return " -> ".join(names)
+
+## What the Combo card-text keyword means, in player-facing words -- the
+## hover tooltip's body, kept here so the explanation lives beside the rule
+## it explains. Derived from BattleConfig, never a literal, so a rebalance
+## cannot leave the tooltip quietly lying. "Strictly consecutive" is the
+## easy part to get wrong: any card in between breaks the combo.
+static func keyword_description() -> String:
+	return "Played right after its partner card, it adds %d%% of both cards' combined damage. Any other card in between breaks it." % roundi(
+		BattleConfig.COMBO_BONUS_RATIO * 100.0)

@@ -29,9 +29,25 @@ func _test_cards_load(t: TestRunner) -> void:
 	t.check_eq(blocker.effects.size(), 1, "block has one effect")
 	t.check_eq((blocker.effects[0] as GuardEffect).amount, BattleConfig.BLOCK_GUARD, "block grants BattleConfig.BLOCK_GUARD guard")
 
+	var kick: CardData = CardLibrary.load_card(&"low_kick")
+	t.check_eq(kick.cost, BattleConfig.LOW_KICK_COST, "low kick costs BattleConfig.LOW_KICK_COST AP")
+	t.check_eq(kick.total_base_damage(), BattleConfig.LOW_KICK_DAMAGE,
+		"low kick deals BattleConfig.LOW_KICK_DAMAGE damage")
+	t.check(kick.has_tag(&"kick"), "low kick carries the kick tag")
+	t.check_eq(kick.effects.size(), 2, "low kick has a damage effect and a status effect")
+	var injury: ApplyStatusEffect = kick.effects[1] as ApplyStatusEffect
+	t.check(injury != null, "low kick's second effect applies a status")
+	t.check_eq(injury.status_id, &"leg_injury", "the status is leg injury")
+	t.check_eq(injury.turns, BattleConfig.LEG_INJURY_TURNS,
+		"the injury lasts BattleConfig.LEG_INJURY_TURNS turn")
+	t.check(not injury.target_self, "the injury lands on the opponent, not the kicker")
+	t.check(injury.extend_duration, "a second kick extends the injury instead of refreshing it")
+	t.check(kick.rules_text.contains("Leg Injury"),
+		"the rules text names the keyword the tooltip explains")
+
 func _test_starting_deck(t: TestRunner) -> void:
 	var deck: Array[CardData] = CardLibrary.build_starting_deck()
-	t.check_eq(deck.size(), 12, "starting deck holds 12 cards")
+	t.check_eq(deck.size(), 14, "starting deck holds 14 cards")
 
 	var counts: Dictionary = {}
 	for card: CardData in deck:
@@ -39,6 +55,7 @@ func _test_starting_deck(t: TestRunner) -> void:
 	t.check_eq(counts.get(&"jab", 0), 5, "deck holds 5 jabs")
 	t.check_eq(counts.get(&"straight", 0), 4, "deck holds 4 straights")
 	t.check_eq(counts.get(&"block", 0), 3, "deck holds 3 blocks")
+	t.check_eq(counts.get(&"low_kick", 0), 2, "deck holds 2 low kicks")
 
 	# Each deck entry must be an independent instance — a shared resource would
 	# let per-card state leak between copies later.
@@ -81,27 +98,27 @@ func _test_effect_totals(t: TestRunner) -> void:
 	t.check_eq(empty.total_guard(), 0, "a card with no effects at all totals zero guard")
 	t.check_eq(empty.total_base_damage(), 0, "a card with no effects at all totals zero damage")
 
-## Ties the printed sentence to the rule that actually runs. The bonus is
-## computed by evaluating ComboRule itself rather than written as a literal,
-## so changing COMBO_BONUS_RATIO without regenerating the cards fails here
-## instead of leaving the card quietly printing a stale number -- which is
-## precisely what the painted card face did for the whole of its life.
+## The card face names the keyword and the trigger; the MECHANIC lives in
+## the Combo tooltip, whose text is derived from the live
+## BattleConfig.COMBO_BONUS_RATIO -- so changing the ratio can never leave
+## a stale number printed anywhere, which is precisely what the old painted
+## card face did for the whole of its life.
 func _test_straight_rules_text_matches_the_combo_rule(t: TestRunner) -> void:
 	var jab: CardData = CardLibrary.load_card(&"jab")
 	var straight: CardData = CardLibrary.load_card(&"straight")
 
-	var rule: ComboRule = ComboRule.jab_straight()
-	var bonus: int = rule.evaluate([jab] as Array, straight)
-	t.check(bonus > 0, "the jab->straight combo awards a bonus to compare against")
-	t.check(straight.rules_text.contains("+%d" % bonus),
-		"straight's rules text prints the bonus ComboRule actually awards")
-
+	t.check_eq(straight.rules_text,
+		"Deal %d damage. Combo right after Jab." % BattleConfig.STRAIGHT_DAMAGE,
+		"straight names the Combo keyword and its trigger, nothing more")
 	# The old painted face said "earlier this turn", which is wrong -- any card
 	# in between breaks the combo. The wording must say immediately.
 	t.check(straight.rules_text.contains("right after Jab"),
 		"straight's rules text states the combo needs Jab immediately before")
-	t.check(not straight.rules_text.contains("50%"),
-		"straight's rules text does not repeat the old face's 50%-of-this-card claim")
 
-	# The other two cards stay single-sentence.
+	# The explanation the tooltip shows, tied to the live ratio.
+	t.check(ComboRule.keyword_description().contains(
+			"%d%%" % roundi(BattleConfig.COMBO_BONUS_RATIO * 100.0)),
+		"the combo keyword description states the bonus ratio from config")
+
+	# The other cards stay combo-free.
 	t.check(not jab.rules_text.contains("Combo"), "jab's rules text mentions no combo")

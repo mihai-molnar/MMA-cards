@@ -6,18 +6,30 @@ extends RefCounted
 
 var _entries: Dictionary = {}
 
-func apply(id: StringName, stacks: int, turns_remaining: int) -> void:
+func apply(id: StringName, stacks: int, turns_remaining: int, extend_duration: bool = false) -> void:
 	if stacks <= 0:
 		return
 	if _entries.has(id):
 		var entry: Dictionary = _entries[id]
-		entry["stacks"] = entry["stacks"] + stacks
-		# Refreshing takes the longer of the two durations; permanent always wins.
-		if entry["turns"] != BattleConfig.STATUS_PERMANENT:
-			if turns_remaining == BattleConfig.STATUS_PERMANENT:
-				entry["turns"] = BattleConfig.STATUS_PERMANENT
-			else:
-				entry["turns"] = maxi(entry["turns"], turns_remaining)
+		if extend_duration:
+			# A duration-stacking status (Low Kick's Leg Injury): each
+			# application keeps the effect alive LONGER rather than deeper --
+			# turns add, stacks take the larger of the two. Permanence still
+			# dominates instead of arithmetic-ing on the -1 sentinel.
+			entry["stacks"] = maxi(entry["stacks"], stacks)
+			if entry["turns"] != BattleConfig.STATUS_PERMANENT:
+				if turns_remaining == BattleConfig.STATUS_PERMANENT:
+					entry["turns"] = BattleConfig.STATUS_PERMANENT
+				else:
+					entry["turns"] = entry["turns"] + turns_remaining
+		else:
+			entry["stacks"] = entry["stacks"] + stacks
+			# Refreshing takes the longer of the two durations; permanent always wins.
+			if entry["turns"] != BattleConfig.STATUS_PERMANENT:
+				if turns_remaining == BattleConfig.STATUS_PERMANENT:
+					entry["turns"] = BattleConfig.STATUS_PERMANENT
+				else:
+					entry["turns"] = maxi(entry["turns"], turns_remaining)
 	else:
 		_entries[id] = {"stacks": stacks, "turns": turns_remaining}
 
@@ -25,6 +37,13 @@ func get_stacks(id: StringName) -> int:
 	if not _entries.has(id):
 		return 0
 	return _entries[id]["stacks"]
+
+## Remaining turns, 0 when absent. BattleConfig.STATUS_PERMANENT (-1) comes
+## back verbatim -- display code should not print it as a countdown.
+func get_turns(id: StringName) -> int:
+	if not _entries.has(id):
+		return 0
+	return _entries[id]["turns"]
 
 func has(id: StringName) -> bool:
 	return _entries.has(id)

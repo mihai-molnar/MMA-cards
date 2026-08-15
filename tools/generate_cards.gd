@@ -20,8 +20,9 @@ func _initialize() -> void:
 	_save(_make_jab())
 	_save(_make_straight())
 	_save(_make_block())
+	_save(_make_low_kick())
 
-	print("Generated 3 card resources in %s" % OUTPUT_DIR)
+	print("Generated 4 card resources in %s" % OUTPUT_DIR)
 	quit(0)
 
 func _save(card: CardData) -> void:
@@ -51,22 +52,40 @@ func _make_straight() -> CardData:
 	card.display_name = "STRAIGHT"
 	card.cost = BattleConfig.STRAIGHT_COST
 	card.tags = [&"straight", &"attack"] as Array[StringName]
-	# Computed exactly the way ComboRule.evaluate() computes it: 50% of BOTH
-	# cards' combined base damage, not 50% of this card's. The hand-painted
-	# card face got that wrong and stayed wrong, because nothing regenerated
-	# it. This does regenerate, so a balance change produces correct text.
-	var combo_bonus: int = floori(
-		(BattleConfig.JAB_DAMAGE + BattleConfig.STRAIGHT_DAMAGE) * BattleConfig.COMBO_BONUS_RATIO)
-	# Phrasing is load-bearing on length, not just meaning: the parchment's
-	# measured usable height fits two lines at RULES_SIZE, and the longer
-	# "...right after Jab, deal +N." wrapped to three, overrunning the panel.
-	# This says the same two things -- immediacy, and the exact bonus -- in a
-	# form that wraps to two. Keep it that way if the wording is ever revised.
-	card.rules_text = "Deal %d damage. Combo: +%d right after Jab." % [
-		BattleConfig.STRAIGHT_DAMAGE, combo_bonus]
+	# The card names the KEYWORD and its trigger; the mechanic (the bonus
+	# ratio, the strictly-consecutive requirement) lives in the Combo
+	# tooltip via ComboRule.keyword_description(), derived from the live
+	# config -- so no number is printed here that a rebalance could leave
+	# stale, which is precisely what the old painted face did. "right after"
+	# is load-bearing wording: any card in between breaks the combo, and an
+	# earlier phrasing ("earlier this turn") lied about that.
+	card.rules_text = "Deal %d damage. Combo right after Jab." % BattleConfig.STRAIGHT_DAMAGE
 	var damage := DamageEffect.new()
 	damage.amount = BattleConfig.STRAIGHT_DAMAGE
 	card.effects = [damage] as Array[CardEffect]
+	return card
+
+func _make_low_kick() -> CardData:
+	var card := CardData.new()
+	card.id = &"low_kick"
+	card.display_name = "LOW KICK"
+	card.cost = BattleConfig.LOW_KICK_COST
+	card.tags = [&"kick", &"attack"] as Array[StringName]
+	# "Leg Injury" is a KEYWORD: CardTemplate colours it yellow and the hover
+	# tooltip explains what it does, so the card itself stays short -- the
+	# mechanics (50% weaker attacks) live in the status description, not here.
+	card.rules_text = "Deal %d damage. Causes Leg Injury for %d turn." % [
+		BattleConfig.LOW_KICK_DAMAGE, BattleConfig.LEG_INJURY_TURNS]
+	var damage := DamageEffect.new()
+	damage.amount = BattleConfig.LOW_KICK_DAMAGE
+	var injury := ApplyStatusEffect.new()
+	injury.status_id = LegInjuryStatus.ID
+	injury.stacks = 1
+	injury.turns = BattleConfig.LEG_INJURY_TURNS
+	injury.target_self = false
+	# A second kick keeps the leg hurt a turn longer, not hurt twice as much.
+	injury.extend_duration = true
+	card.effects = [damage, injury] as Array[CardEffect]
 	return card
 
 func _make_block() -> CardData:

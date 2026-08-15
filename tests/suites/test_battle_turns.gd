@@ -119,7 +119,7 @@ func _test_restart_resets_full_state(t: TestRunner) -> void:
 	t.check_eq(battle.enemy.statuses.get_stacks(StrengthStatus.ID), 0, "restart clears the enemy's statuses")
 	t.check_eq(battle.ap, BattleConfig.AP_PER_TURN, "restart resets AP to 3")
 	t.check_eq(battle.deck.hand.size(), BattleConfig.HAND_SIZE, "restart deals a fresh hand of 5")
-	t.check_eq(battle.deck.total_cards(), 12, "restart preserves the 12-card deck total")
+	t.check_eq(battle.deck.total_cards(), 14, "restart preserves the 14-card deck total")
 	t.check_eq(battle.brain.current_action, EnemyBrain.Action.ATTACK, "restart returns the enemy brain to ATTACK")
 	t.check(not battle.is_over, "restart clears is_over")
 	t.check_eq(battle.turn_number, 1, "restart returns to turn 1")

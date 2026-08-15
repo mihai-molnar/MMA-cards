@@ -5,6 +5,7 @@ const TestRunner := preload("res://tests/run_tests.gd")
 func run(t: TestRunner) -> void:
 	_test_illustrations_load(t)
 	_test_frames_load(t)
+	_test_status_icons_load(t)
 	_test_missing_illustration_returns_null(t)
 	_test_results_are_cached(t)
 	_test_illustrations_and_frames_do_not_collide(t)
@@ -22,6 +23,16 @@ func _test_frames_load(t: TestRunner) -> void:
 		"the master template frame resolves to a texture")
 	t.check(CardArt.frame_for(CardTemplate.DEFENSE_FRAME) != null,
 		"the defense frame resolves to a texture")
+
+## Status icons follow the same convention as the other two lookups:
+## assets/icons/<status_id>.png, null when missing -- FighterPanel falls
+## back to the text status line for icon-less statuses, so null is a
+## legitimate state, not an error.
+func _test_status_icons_load(t: TestRunner) -> void:
+	t.check(CardArt.status_icon_for(&"leg_injury") != null,
+		"leg injury resolves to a status icon")
+	t.check(CardArt.status_icon_for(&"strength") == null,
+		"a status without an icon resolves to null quietly")
 
 func _test_missing_illustration_returns_null(t: TestRunner) -> void:
 	# A card authored before its art exists is a legitimate state -- it renders

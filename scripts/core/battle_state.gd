@@ -87,6 +87,13 @@ func play_card(index: int) -> bool:
 	ap_changed.emit(ap, BattleConfig.AP_PER_TURN)
 	hand_changed.emit()
 	fighters_changed.emit()
+	# A card can change what the telegraphed enemy action will actually do --
+	# Low Kick halves the coming attack the moment it lands -- and
+	# preview_damage's contract is that the telegraph never diverges from
+	# what resolve_damage would produce. Re-telegraph after every play, so
+	# "ATTACK 8" becomes "ATTACK 4" in real time instead of lying until the
+	# turn ends.
+	intent_changed.emit(brain.intent_text(enemy, player))
 	_check_battle_over()
 	return true
 

@@ -11,6 +11,8 @@ extends Control
 
 const PANEL_SIZE: Vector2 = Vector2(210, 176)
 const RECT_SIZE: Vector2 = Vector2(104, 120)
+const STATUS_ICON_SIZE: float = 24.0
+const STATUS_ICON_GAP: float = 4.0
 
 const DAMAGE_FLASH: Color = Color(1.0, 0.35, 0.35)
 const GUARD_FLASH: Color = Color(0.55, 0.85, 1.0)
@@ -27,6 +29,12 @@ var _rect: ColorRect
 var _name_label: Label
 var _hp_label: Label
 var _status_label: Label
+## Icon + countdown badges for statuses that have an icon asset, sitting
+## along the rect's bottom edge. Parented to the rect (like the name) so the
+## damage shake carries them.
+var _status_icon_row: HBoxContainer
+## What the row currently displays, as [[id, number], ...]. Test hook.
+var _status_icon_entries: Array = []
 var _rect_home: Vector2 = Vector2.ZERO
 ## The rect's colour at build time -- what _flash_rect must always return to.
 ## Reading _rect.color live instead (the old bug) captures whatever colour a
@@ -90,6 +98,18 @@ func _build(display_name: String, rect_color: Color) -> void:
 	_status_label = _make_row_label(14, RECT_SIZE.y + 44.0)
 	_status_label.modulate = STATUS_COLOR
 
+	# Along the rect's bottom edge, inside it -- "under the fighter" without
+	# growing the panel's footprint (the hovered cards' lifted tops already
+	# sit close beneath these panels; see the hud's layout notes).
+	_status_icon_row = HBoxContainer.new()
+	_status_icon_row.add_theme_constant_override("separation", int(STATUS_ICON_GAP))
+	_status_icon_row.position = Vector2(4.0, RECT_SIZE.y - STATUS_ICON_SIZE - 4.0)
+	_status_icon_row.size = Vector2(RECT_SIZE.x - 8.0, STATUS_ICON_SIZE)
+	_status_icon_row.alignment = BoxContainer.ALIGNMENT_END if align_right \
+		else BoxContainer.ALIGNMENT_BEGIN
+	_status_icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rect.add_child(_status_icon_row)
+
 func _make_row_label(font_size: int, y: float) -> Label:
 	var label := Label.new()
 	label.add_theme_font_size_override("font_size", font_size)
@@ -106,6 +126,7 @@ func update(fighter: Fighter) -> void:
 		fighter.display_name.to_upper(), fighter.hp, fighter.max_hp
 	]
 	_status_label.text = _status_line(fighter)
+	_rebuild_status_icons(fighter)
 
 	var kind: StringName = &"none"
 	var amount: int = 0
@@ -144,16 +165,54 @@ func update(fighter: Fighter) -> void:
 func suppress_next_guard_pulse() -> void:
 	_suppress_guard_pulse = true
 
-## Guard and statuses, omitted entirely when zero.
+## Guard and icon-less statuses, omitted entirely when zero. A status with
+## an icon renders in _status_icon_row instead -- never in both places.
 func _status_line(fighter: Fighter) -> String:
 	var parts: Array[String] = []
 	if fighter.guard > 0:
 		parts.append("GUARD %d" % fighter.guard)
 	for id: StringName in fighter.statuses.ids():
+		if CardArt.status_icon_for(id) != null:
+			continue
 		parts.append("%s %d" % [
 			StatusRegistry.display_name(id), fighter.statuses.get_stacks(id)
 		])
 	return "   ".join(parts)
+
+## One icon + number pair per status that has an icon asset. The number is
+## whichever counter the registry says matters for that status: remaining
+## turns for a countdown like Leg Injury, stacks for a magnitude.
+func _rebuild_status_icons(fighter: Fighter) -> void:
+	for child: Node in _status_icon_row.get_children():
+		_status_icon_row.remove_child(child)
+		child.free()
+	_status_icon_entries = []
+	for id: StringName in fighter.statuses.ids():
+		var icon: Texture2D = CardArt.status_icon_for(id)
+		if icon == null:
+			continue
+		var value: int = fighter.statuses.get_turns(id) if StatusRegistry.shows_turns(id) \
+			else fighter.statuses.get_stacks(id)
+		_status_icon_entries.append([id, value])
+
+		var image := TextureRect.new()
+		image.texture = icon
+		image.custom_minimum_size = Vector2.ONE * STATUS_ICON_SIZE
+		image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_status_icon_row.add_child(image)
+
+		var number := Label.new()
+		number.text = str(value)
+		number.add_theme_font_size_override("font_size", 14)
+		number.modulate = STATUS_COLOR
+		number.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		number.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_status_icon_row.add_child(number)
+
+func debug_status_icons() -> Array:
+	return _status_icon_entries
 
 ## Centre of the fighter rectangle, in the panel's parent coordinate space.
 ## Used as the anchor a played card lunges toward.

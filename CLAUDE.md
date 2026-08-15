@@ -1,7 +1,7 @@
 # mma-cards
 
 Slay the Spire-inspired MMA card battler. Godot 4.5.1, typed GDScript.
-Currently a single-battle proof of concept: 12-card deck, 3 AP per turn,
+Currently a single-battle proof of concept: 14-card deck, 3 AP per turn,
 jab->straight combo, guard, strength, telegraphed enemy intent.
 
 ## Commands
@@ -18,7 +18,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `576 checks, 0 failures` / `PASS`.
+on a clean tree ends with `644 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -80,13 +80,30 @@ system is being bypassed.
 `bonus_damage` (the first `DamageEffect` consumes it), `results`, and `log`.
 
 **Add a status:** create a script in `scripts/core/statuses/` defining `ID`,
-`DISPLAY_NAME`, and **both** `modify_outgoing_damage(amount, stacks)` and
-`modify_incoming_damage(amount, stacks)` as statics — pass-through if unused,
-since `StatusRegistry` calls both unconditionally. Then add one line to
-`StatusRegistry.DEFINITIONS`. The damage pipeline needs no changes.
+`DISPLAY_NAME`, `SHOW_TURNS` (which number display code prints beside it:
+`true` for a countdown like Leg Injury's remaining turns, `false` for a
+magnitude like strength stacks), a `description()` static (the hover
+tooltip's body — derive its numbers from `BattleConfig`, never literals),
+and **both** `modify_outgoing_damage(amount, stacks)` and
+`modify_incoming_damage(amount, stacks)` as statics — pass-through if
+unused, since `StatusRegistry` calls both unconditionally. Then add one
+line to `StatusRegistry.DEFINITIONS`. The damage pipeline needs no changes.
+Optionally drop an icon at `assets/icons/<status_id>.png` — FighterPanel
+then shows it as an icon + number badge on the fighter's rect and drops the
+status from its text line; without one, the text line carries it, which is
+a complete fallback, not an error. `DISPLAY_NAME` doubles as the card-text
+keyword: rules text naming it gets it coloured yellow and the hover tooltip
+(`StatusTooltip`, driven by `BattleView`) explains it. A status applied by
+a card with `extend_duration = true` on its `ApplyStatusEffect` ADDS
+durations on re-application (each Low Kick keeps the leg hurt one turn
+longer) instead of refreshing to the longer one.
 
 **Add a combo:** construct another `ComboRule` in `BattleState._combo_rules`.
-Rules match on card tags, so no card code changes.
+Rules match on card tags, so no card code changes. On the card face, write
+the word "Combo" plus the trigger ("Combo right after Jab.") — it renders
+as a yellow keyword and the hover tooltip explains the mechanic from
+`ComboRule.keyword_description()`; never print the bonus number on the
+card, that is exactly the stale-number trap the keyword exists to avoid.
 
 **Change balance:** everything tunable is in `scripts/core/battle_config.gd`.
 No magic numbers anywhere else. But the constants are not uniformly live:
@@ -139,12 +156,15 @@ window prints `ATTACK` or `DEFENSE` from `CardTemplate.variant_for()` —
 tag-driven: anything tagged `defense` is DEFENSE, everything else ATTACK.
 The same variant picks the frame via `CardTemplate.frame_name()`.
 
-Two lookups, both by convention, both in `scripts/ui/card_art.gd`:
+Three lookups, all by convention, all in `scripts/ui/card_art.gd`:
 
 - **Illustration**, per card id: a card with id `jab` uses
   `res://assets/illustrations/jab.png`.
 - **Frame**, by name: `frame_for(CardTemplate.frame_name(variant))` — one
   texture per colourway.
+- **Status icon**, per status id: `status_icon_for(&"leg_injury")` →
+  `res://assets/icons/leg_injury.png`; null (a legitimate fallback) when no
+  icon exists.
 
 That asymmetry is the point. Adding a card means authoring a `.tres` and
 dropping in **one** illustration — the frame it wears already exists. A card
@@ -156,12 +176,20 @@ by the bare name would collide the day someone adds a card whose id matches
 the frame's name — its illustration and the frame would share a key and serve
 each other's texture.
 
-**Numbers in the rules text are coloured by `CardTemplate.rules_bbcode()`**:
-damage red (`RULES_DAMAGE_COLOR`), guard blue (`RULES_GUARD_COLOR`). The
-rules label is a `RichTextLabel` (Label cannot render inline colour). Each
-number is coloured by the sentence it sits in — a sentence containing
-"damage" goes red, "guard"/"block" blue, and a sentence naming neither
-(Straight's "Combo: +7 right after Jab.") falls back to the card's variant.
+**Numbers and keywords in the rules text are coloured by
+`CardTemplate.rules_bbcode()`**: damage numbers red (`RULES_DAMAGE_COLOR`),
+guard numbers blue (`RULES_GUARD_COLOR`), keywords yellow
+(`RULES_KEYWORD_COLOR`). The rules label is a `RichTextLabel` (Label cannot
+render inline colour). Each number is coloured by the sentence it sits in —
+"damage" goes red, "guard"/"block" blue, a sentence naming a status keeps
+its numbers plain (a duration is not damage), and a sentence naming nothing
+falls back to the card's variant. Keywords are every registered status's
+`DISPLAY_NAME` plus `COMBO_KEYWORD` — the one game-rule keyword with no
+status behind it, whose tooltip body is `ComboRule.keyword_description()`
+(the ratio derived from `COMBO_BONUS_RATIO`, so a rebalance cannot strand a
+stale number; the card itself prints no bonus number at all). Matching is
+word-bounded and case-insensitive so STR never fires inside STRAIGHT. Any
+card whose text names a keyword gets the `StatusTooltip` above it on hover.
 The colour tags add no visible characters, so the wrap tests measure
 `rules_plain()` and model exactly what the label renders.
 
@@ -216,9 +244,9 @@ render:
   --script res://tools/capture_cards.gd
 ```
 
-writes `/tmp/card-faces.png` with a row of all three cards plus an
-armed/un-armed Straight pair side by side (to judge the combo tint below), laid
-out to fit the project's 1152x648 base canvas. No extra zoom row is needed: at
+writes `/tmp/card-faces.png` with a row of all four library cards plus an
+armed/un-armed Straight pair on a second row beneath (to judge the combo
+tint below), laid out to fit the project's 1152x648 base canvas. No extra zoom row is needed: at
 that canvas size, `window/stretch/mode="canvas_items"` over the 2560x1440
 window already renders the capture at 2560/1152 = 2.222x, so a 200x300 card
 lands as roughly 444x667 real pixels in the PNG. Run it **non-headless** —
@@ -345,6 +373,16 @@ the card still in the fan. Enemy attacks have no card animation and land
 immediately (`_pending_reaction_delay` stays 0). Hand affordability
 dimming is deliberately NOT deferred — the AP is genuinely spent. The
 result banner waits the same delay plus `RESULT_BEAT` for the same reason.
+The enemy INTENT obeys the same rule: `play_card` re-telegraphs
+synchronously (Low Kick halves the coming attack), and
+`BattleView._on_intent_changed` defers that update by the same impact
+delay, re-reading the current intent at fire time so a racing immediate
+update can never be overwritten by stale in-flight text. Verified by
+sampling the intent label against wall clock: the flip lands at ~the
+impact delay, alongside the HP drop. When sampling such timings, let the
+scene idle ~30 frames first — the startup hitch's inflated deltas skew any
+timer created near boot, which reads as an early fire but is a
+measurement artifact.
 
 **`FighterPanel` derives damage feedback by diffing hp/guard itself**, so
 `BattleState` needs no damage payload and `scripts/core/` stays presentation-
@@ -464,7 +502,7 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable single battle, fully art-directed, 576 headless checks. What is
+Playable single battle, fully art-directed, 644 headless checks. What is
 conspicuously still placeholder:
 
 - **The fighters are flat coloured rectangles.** With painted cards on screen

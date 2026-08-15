@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/card_effect.gd" id="1_sf6fs"]
+[ext_resource type="Script" path="res://scripts/core/effects/damage_effect.gd" id="2_3gxcm"]
+[ext_resource type="Script" path="res://scripts/core/effects/apply_status_effect.gd" id="3_q8yks"]
+[ext_resource type="Script" path="res://scripts/core/card_data.gd" id="4_7ag63"]
+
+[sub_resource type="Resource" id="Resource_y7qac"]
+script = ExtResource("2_3gxcm")
+amount = 2
+
+[sub_resource type="Resource" id="Resource_8arbi"]
+script = ExtResource("3_q8yks")
+status_id = &"leg_injury"
+stacks = 1
+turns = 1
+target_self = false
+extend_duration = true
+
+[resource]
+script = ExtResource("4_7ag63")
+id = &"low_kick"
+display_name = "LOW KICK"
+tags = Array[StringName]([&"kick", &"attack"])
+effects = Array[ExtResource("1_sf6fs")]([SubResource("Resource_y7qac"), SubResource("Resource_8arbi")])
+rules_text = "Deal 2 damage. Causes Leg Injury for 1 turn."

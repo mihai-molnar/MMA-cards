@@ -4,6 +4,7 @@ const TestRunner := preload("res://tests/run_tests.gd")
 
 func run(t: TestRunner) -> void:
 	_test_initial_display(t)
+	_test_status_icons_show_their_countdown(t)
 	_test_damage_pulse(t)
 	_test_guard_pulse(t)
 	_test_no_pulse_cases(t)
@@ -23,6 +24,35 @@ func _test_initial_display(t: TestRunner) -> void:
 	t.check(panel.debug_hp_text().contains("48"), "hp text shows current hp")
 	t.check(panel.debug_hp_text().contains("ENEMY"), "hp text names the fighter")
 	t.check_eq(panel.debug_last_pulse_kind, &"none", "the first update never pulses")
+	panel.free()
+
+## A status WITH an icon (leg injury) renders as icon + number under the
+## fighter and leaves the text line; one without (strength) stays in the
+## text line as before. The number beside the icon is what the registry says
+## to show -- remaining TURNS for leg injury, counting down each turn.
+func _test_status_icons_show_their_countdown(t: TestRunner) -> void:
+	var panel: FighterPanel = FighterPanel.create("Enemy", Color(0.8, 0.3, 0.3), true)
+	var fighter := Fighter.new("Enemy", 48)
+	fighter.statuses.apply(&"leg_injury", 1, 3)
+	fighter.statuses.apply(&"strength", 2, 2)
+
+	panel.update(fighter)
+	t.check_eq(panel.debug_status_icons(), [[&"leg_injury", 3]],
+		"leg injury shows as an icon with its remaining turns")
+	t.check(not panel.debug_status_text().contains("Leg Injury"),
+		"an icon status does not repeat in the text line")
+	t.check(panel.debug_status_text().contains("STR 2"),
+		"an icon-less status stays in the text line")
+
+	fighter.statuses.tick_turn_end()
+	panel.update(fighter)
+	t.check_eq(panel.debug_status_icons(), [[&"leg_injury", 2]],
+		"the number beside the icon counts down with the timer")
+
+	fighter.statuses.tick_turn_end()
+	fighter.statuses.tick_turn_end()
+	panel.update(fighter)
+	t.check_eq(panel.debug_status_icons(), [], "an expired status drops its icon")
 	panel.free()
 
 func _test_damage_pulse(t: TestRunner) -> void:

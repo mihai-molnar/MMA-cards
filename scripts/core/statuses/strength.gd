@@ -7,6 +7,13 @@ extends RefCounted
 
 const ID: StringName = &"strength"
 const DISPLAY_NAME: String = "STR"
+## The interesting number is the magnitude (each stack is +25% damage), so
+## display code prints stacks, not the timer.
+const SHOW_TURNS: bool = false
+
+static func description() -> String:
+	return "Attacks deal %d%% more damage per stack." % roundi(
+		BattleConfig.STRENGTH_DAMAGE_PER_STACK * 100.0)
 
 static func modify_outgoing_damage(amount: int, stacks: int) -> int:
 	if stacks <= 0:

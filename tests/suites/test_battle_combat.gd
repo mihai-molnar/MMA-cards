@@ -7,6 +7,8 @@ func run(t: TestRunner) -> void:
 	_test_combo_broken(t)
 	_test_combo_history_clears_across_turns(t)
 	_test_buff_timing_across_turns(t)
+	_test_low_kick_weakens_the_telegraphed_attack(t)
+	_test_low_kicks_stack_duration(t)
 	_test_win(t)
 	_test_loss(t)
 	_test_no_intent_after_fatal_enemy_attack(t)
@@ -21,6 +23,56 @@ func _stack_hand(battle: BattleState, ids: Array) -> void:
 	for card_id: StringName in ids:
 		hand.append(CardLibrary.load_card(card_id))
 	battle.deck.hand = hand
+
+## Low Kick is the whole debuff loop in one card: chip damage, a status on
+## the OPPONENT, a telegraph that must update in real time (preview_damage's
+## own doc: the telegraph must never diverge from what resolve_damage would
+## produce -- an "ATTACK 8" on screen while the real hit is 4 is exactly
+## that lie), and an expiry after exactly one weakened attack.
+func _test_low_kick_weakens_the_telegraphed_attack(t: TestRunner) -> void:
+	var battle: BattleState = _new_battle()
+	_stack_hand(battle, [&"low_kick"])
+
+	# The enemy's first action in the cycle is ATTACK, telegraphed at full 8.
+	t.check_eq(battle.brain.intent_text(battle.enemy, battle.player), "ATTACK 8",
+		"before the kick the telegraph shows the full attack")
+
+	var intents: Array[String] = []
+	battle.intent_changed.connect(func(text: String) -> void: intents.append(text))
+	battle.play_card(0)
+	t.check_eq(battle.enemy.hp, 46, "the low kick itself deals 2")
+	t.check_eq(battle.ap, BattleConfig.AP_PER_TURN, "a 0-cost card spends no AP")
+	t.check(battle.enemy.statuses.has(&"leg_injury"), "the enemy is leg-injured")
+	t.check(intents.size() >= 1, "playing a card re-emits the intent")
+	t.check_eq(intents.back(), "ATTACK 4", "the telegraph halves in real time (8 -> 4)")
+
+	var hp_before: int = battle.player.hp
+	battle.end_turn()
+	t.check_eq(hp_before - battle.player.hp, 4,
+		"the injured enemy attack lands for 4 instead of 8")
+	t.check(not battle.enemy.statuses.has(&"leg_injury"),
+		"the injury expires at the enemy's own turn end -- exactly one weakened attack")
+
+## Each additional kick keeps the leg hurt one enemy turn longer -- the
+## duration EXTENDS; the injury itself never deepens (stacks stay 1, the
+## halving is not multiplied).
+func _test_low_kicks_stack_duration(t: TestRunner) -> void:
+	var battle: BattleState = _new_battle()
+	_stack_hand(battle, [&"low_kick", &"low_kick"])
+
+	battle.play_card(0)
+	battle.play_card(0)
+	t.check_eq(battle.enemy.statuses.get_turns(&"leg_injury"), 2,
+		"two kicks extend the injury to 2 turns")
+	t.check_eq(battle.enemy.statuses.get_stacks(&"leg_injury"), 1,
+		"the injury never deepens, only lengthens")
+
+	battle.end_turn()
+	t.check_eq(battle.enemy.statuses.get_turns(&"leg_injury"), 1,
+		"one enemy turn later a turn remains")
+	battle.end_turn()
+	t.check(not battle.enemy.statuses.has(&"leg_injury"),
+		"the extended injury expires after the second enemy turn")
 
 func _test_combo_integration(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()

@@ -28,7 +28,7 @@ extends SceneTree
 ##     --path . --script res://tools/capture_cards.gd
 
 const OUTPUT: String = "/tmp/card-faces.png"
-const CARD_IDS: Array[StringName] = [&"jab", &"straight", &"block"]
+const CARD_IDS: Array[StringName] = [&"jab", &"straight", &"block", &"low_kick"]
 const GAP: float = 20.0
 
 func _initialize() -> void:
@@ -40,18 +40,14 @@ func _run() -> void:
 	background.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(background)
 
-	# Both groups sit on one row, side by side, rather than stacked -- the
-	# three-card row alone is 640px of content (3 cards + 2 internal gaps),
-	# so stacking a second group below it wastes 648px of canvas height that
-	# is otherwise unused. The row of three starts at x=GAP and spans 640px
-	# of content, ending at x=660; the combo pair starts one more GAP past
-	# that, at x=680, and spans 420px of content (2 cards + 1 internal gap)
-	# to x=1100 -- comfortably inside the 1152-wide canvas with 52px to
-	# spare, and both rows sit at y=GAP, well clear of the 648-tall canvas
-	# at a 300px card height.
-	var row_width: float = CardView.CARD_SIZE.x * 3.0 + GAP * 2.0
+	# Two stacked rows since the library grew to four cards: the card row is
+	# now 860px of content (4 cards + 3 internal gaps), which no longer
+	# leaves room for the 420px combo pair beside it inside the 1152-wide
+	# canvas (860 + 20 + 420 = 1300). Vertically both rows fit with margin:
+	# GAP + 300 + GAP + 300 = 640 against the 648-tall canvas -- 8px to
+	# spare, so keep GAP at 20 or re-check this arithmetic.
 	_add_row(Vector2(GAP, GAP))
-	_add_combo_row(Vector2(GAP + row_width + GAP, GAP))
+	_add_combo_row(Vector2(GAP, GAP + CardView.CARD_SIZE.y + GAP))
 
 	# Let the tree lay out and draw before reading the viewport back.
 	for _i: int in range(10):
