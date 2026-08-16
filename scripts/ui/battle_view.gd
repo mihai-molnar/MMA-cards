@@ -77,6 +77,7 @@ func _build_ui() -> void:
 	hud.end_turn_pressed.connect(_on_end_turn_pressed)
 	hud.restart_pressed.connect(_on_restart_pressed)
 	hud.continue_pressed.connect(_on_continue_pressed)
+	hud.status_hovered.connect(_on_status_hovered)
 	layer.add_child(hud)
 
 	hand_view = HandView.new()
@@ -152,6 +153,15 @@ func _on_card_hovered(view: CardView, hovered: bool) -> void:
 	var anchor: Vector2 = hand_view.position + Vector2(
 		view.rest_position.x + CardView.CARD_SIZE.x / 2.0, zoomed_top)
 	status_tooltip.show_for_card(view.card, anchor)
+
+## A status chip on either fighter panel: same tooltip, hanging below the
+## chip (the panels sit at the top of the screen). The anchor arrives
+## already in HUD space, which is the tooltip's parent space.
+func _on_status_hovered(id: StringName, anchor: Vector2, hovered: bool) -> void:
+	if hovered:
+		status_tooltip.show_for_status(id, anchor)
+	else:
+		status_tooltip.hide_tooltip()
 
 ## The ENTIRE fighter-side reaction is deferred for a played card -- HP text,
 ## panel flash, damage number, rect shake AND the whole-view impact -- not

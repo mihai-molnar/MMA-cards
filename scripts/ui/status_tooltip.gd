@@ -50,7 +50,27 @@ func show_for_card(card: CardData, anchor_top_centre: Vector2) -> void:
 	if ids.is_empty():
 		hide_tooltip()
 		return
+	_populate(ids)
+	visible = true
+	reset_size()
+	position = anchor_top_centre - Vector2(size.x / 2.0, size.y + ANCHOR_GAP)
+	_clamp_to_viewport()
 
+## The chip variant: one status, hanging BELOW its anchor (the chip's
+## bottom-centre) -- the chips sit at the top of the screen under the hp
+## readout, and a panel above the anchor would cover exactly what it
+## explains. An unregistered id hides the tooltip, mirroring show_for_card.
+func show_for_status(id: StringName, anchor_bottom_centre: Vector2) -> void:
+	if StatusRegistry.description(id) == "":
+		hide_tooltip()
+		return
+	_populate([id] as Array[StringName])
+	visible = true
+	reset_size()
+	position = anchor_bottom_centre + Vector2(-size.x / 2.0, ANCHOR_GAP)
+	_clamp_to_viewport()
+
+func _populate(ids: Array[StringName]) -> void:
 	for child: Node in _rows.get_children():
 		_rows.remove_child(child)
 		child.free()
@@ -63,12 +83,10 @@ func show_for_card(card: CardData, anchor_top_centre: Vector2) -> void:
 		body.custom_minimum_size = Vector2(BODY_WIDTH, 0.0)
 		_rows.add_child(body)
 
-	visible = true
-	reset_size()
-	position = anchor_top_centre - Vector2(size.x / 2.0, size.y + ANCHOR_GAP)
-	# Keep the panel on screen when a fan-edge card is hovered. Only possible
-	# in a tree -- tests build the tooltip detached, where there is no
-	# viewport to clamp against.
+## Keep the panel on screen when an edge chip or fan-edge card is hovered.
+## Only possible in a tree -- tests build the tooltip detached, where there
+## is no viewport to clamp against.
+func _clamp_to_viewport() -> void:
 	if is_inside_tree():
 		var limit: float = get_viewport_rect().size.x
 		position.x = clampf(position.x, 0.0, maxf(0.0, limit - size.x))

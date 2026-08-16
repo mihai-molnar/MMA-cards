@@ -13,6 +13,9 @@ signal continue_pressed()
 ## outrank a hovered (50) or lunging (60) card or they redraw over it.
 const RESULT_PANEL_Z: int = 100
 
+## Forwarded from both FighterPanels, so BattleView connects once.
+signal status_hovered(id: StringName, anchor: Vector2, hovered: bool)
+
 ## Panels shrank and moved up to free vertical room for the larger card fan.
 ## (24, 56): a 24px margin from the left edge, mirrored by ENEMY_PANEL_AT's
 ## 24px margin from the right (1152 - 24 - PANEL_SIZE.x = 918). Panels then
@@ -43,6 +46,11 @@ const END_TURN_SIZE: Vector2 = Vector2(150, 48)
 ## player FighterPanel's icon cluster.)
 const DRAW_LABEL_AT: Vector2 = Vector2(16, 596)
 
+## The AP readout's corner spot: the bolt sits directly above the draw-pile
+## label, sharing its left margin, with a 16px gap to the label row.
+const AP_ICON_AT: Vector2 = Vector2(16, 524)
+const AP_ICON_SIZE: float = 56.0
+
 ## Bottom-right pile count, mirroring DRAW_LABEL_AT. Right-aligned within
 ## DISCARD_LABEL_SIZE so its rendered right edge lands at
 ## DISCARD_LABEL_AT.x + DISCARD_LABEL_SIZE.x = 1136 (16px from the design
@@ -62,6 +70,8 @@ var _result_panel: Control
 var _result_label: Label
 var _restart_button: Button
 var _continue_button: Button
+var _ap_icon: TextureRect
+var _ap_value: Label
 
 func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -85,18 +95,36 @@ func _build() -> void:
 	HudText.style(_intent_label, 20)
 
 	# Fighters face each other: player left, enemy right, numbers under each.
-	_player_panel = FighterPanel.create("Player", false, true)
+	# Their chip hovers are forwarded as one HUD signal (panel anchors are
+	# already in HUD space -- the panels are direct children).
+	_player_panel = FighterPanel.create("Player", false)
 	_player_panel.position = PLAYER_PANEL_AT
+	_player_panel.status_hovered.connect(status_hovered.emit)
 	add_child(_player_panel)
 
-	_enemy_panel = FighterPanel.create("Enemy", true, false)
+	_enemy_panel = FighterPanel.create("Enemy", true)
 	_enemy_panel.position = ENEMY_PANEL_AT
+	_enemy_panel.status_hovered.connect(status_hovered.emit)
 	add_child(_enemy_panel)
 
-	# Draw sits bottom-left, End Turn and discard bottom-right -- the AP
-	# readout moved into the player FighterPanel's icon cluster, and the
-	# combat log that used to occupy the centre band is gone, so the middle
-	# of the screen is free for the larger card fan.
+	# Bottom-left corner stack: the AP bolt above the draw-pile label. The
+	# End Turn button and discard count mirror them bottom-right, so the
+	# middle of the screen stays free for the card fan.
+	_ap_icon = TextureRect.new()
+	_ap_icon.texture = CardArt.ui_icon_for(&"ap")
+	# stretch/expand BEFORE position/size -- see FighterPanel._make_icon.
+	_ap_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_ap_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_ap_icon.position = AP_ICON_AT
+	_ap_icon.size = Vector2.ONE * AP_ICON_SIZE
+	_ap_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_ap_icon)
+
+	_ap_value = _add_label("", AP_ICON_AT + Vector2(0.0, AP_ICON_SIZE * 0.36), 13)
+	_ap_value.size = Vector2(AP_ICON_SIZE, 18.0)
+	_ap_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HudText.style(_ap_value, 13)
+
 	_draw_label = _add_label("", DRAW_LABEL_AT, 14)
 	HudText.style(_draw_label, 14)
 
@@ -170,7 +198,10 @@ func update_intent(text: String) -> void:
 	_intent_label.text = "INTENT: %s" % text
 
 func update_ap(current: int, maximum: int) -> void:
-	_player_panel.update_ap(current, maximum)
+	_ap_value.text = "%d / %d" % [current, maximum]
+
+func debug_ap_text() -> String:
+	return _ap_value.text
 
 func update_fighters(battle: BattleState) -> void:
 	_player_panel.update(battle.player)

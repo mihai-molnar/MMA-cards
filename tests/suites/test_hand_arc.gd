@@ -8,6 +8,7 @@ func run(t: TestRunner) -> void:
 	_test_empty_hand(t)
 	_test_clear_of_end_turn_button(t)
 	_test_clear_of_draw_label(t)
+	_test_clear_of_ap_readout(t)
 	_test_clear_hover(t)
 	_test_layout_invariants_across_hand_sizes(t)
 	_test_hand_size_ceiling(t)
@@ -117,6 +118,23 @@ func _test_clear_of_draw_label(t: TestRunner) -> void:
 	t.check(left_edge > draw_right_edge,
 		"the fan stays clear of the draw label (left edge %f, label right edge %f)" % [
 			left_edge, draw_right_edge])
+	view.free()
+
+## The AP readout returned to the bottom-left corner (the bolt sits above
+## the draw label now), so it gets the same rotated-silhouette check at both
+## of its rows -- the icon's top and bottom edges, since the leaning card's
+## edge position varies with height.
+func _test_clear_of_ap_readout(t: TestRunner) -> void:
+	var ap_right: float = BattleHud.AP_ICON_AT.x + BattleHud.AP_ICON_SIZE
+	var view: HandView = _hand_with([&"jab", &"straight", &"jab", &"block", &"straight"])
+	var leftmost: CardView = view.get_child(0) as CardView
+	for row_y: float in [BattleHud.AP_ICON_AT.y, BattleHud.AP_ICON_AT.y + BattleHud.AP_ICON_SIZE]:
+		var left_edge: float = HandView.rotated_left_edge_at_y(
+			leftmost.rest_position.x, leftmost.rest_position.y, leftmost.rest_rotation,
+			row_y)
+		t.check(left_edge > ap_right,
+			"the fan stays clear of the AP readout at y %.0f (left edge %f, ap right edge %f)" % [
+				row_y, left_edge, ap_right])
 	view.free()
 
 func _test_clear_hover(t: TestRunner) -> void:

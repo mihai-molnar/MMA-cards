@@ -33,7 +33,9 @@ func _test_frames_load(t: TestRunner) -> void:
 func _test_status_icons_load(t: TestRunner) -> void:
 	t.check(CardArt.status_icon_for(&"leg_injury") != null,
 		"leg injury resolves to a status icon")
-	t.check(CardArt.status_icon_for(&"strength") == null,
+	t.check(CardArt.status_icon_for(&"strength") != null,
+		"strength has an icon now -- the chip area shows it")
+	t.check(CardArt.status_icon_for(&"no_such_status") == null,
 		"a status without an icon resolves to null quietly")
 
 func _test_missing_illustration_returns_null(t: TestRunner) -> void:

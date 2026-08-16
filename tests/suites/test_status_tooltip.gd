@@ -6,6 +6,7 @@ func run(t: TestRunner) -> void:
 	_test_tooltip_populates_for_keyword_cards(t)
 	_test_tooltip_explains_the_combo(t)
 	_test_tooltip_hides_for_plain_cards(t)
+	_test_tooltip_for_single_status(t)
 
 ## Combo has no status behind it -- the tooltip explains game-rule keywords
 ## too, with the ratio pulled from config via ComboRule.
@@ -27,6 +28,25 @@ func _test_tooltip_populates_for_keyword_cards(t: TestRunner) -> void:
 	t.check(tip.debug_text().contains("Leg Injury"), "the tooltip names the status")
 	t.check(tip.debug_text().contains("50%"),
 		"the tooltip explains the status from the registry description")
+	tip.free()
+
+## A hovered status chip explains ONE status, and the panel hangs BELOW its
+## anchor -- the chips sit at the top of the screen under the hp readout,
+## so above-the-anchor (the card behaviour) would cover what it explains.
+func _test_tooltip_for_single_status(t: TestRunner) -> void:
+	var tip := StatusTooltip.new()
+	tip.show_for_status(&"leg_injury", Vector2(200.0, 120.0))
+	t.check(tip.visible, "a chip hover shows the tooltip")
+	t.check(tip.debug_text().contains("Leg Injury"), "it names the status")
+	t.check(tip.debug_text().contains("50%"),
+		"it explains the status from the registry description")
+	t.check(tip.position.y >= 120.0, "the tooltip hangs below the chip anchor")
+	t.check(absf(tip.position.x + tip.size.x / 2.0 - 200.0) < 1.0,
+		"the tooltip is centred on the chip")
+
+	tip.show_for_status(&"not_a_status", Vector2(200.0, 120.0))
+	t.check(not tip.visible,
+		"an unregistered id hides the tooltip rather than showing an empty panel")
 	tip.free()
 
 func _test_tooltip_hides_for_plain_cards(t: TestRunner) -> void:

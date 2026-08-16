@@ -20,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `823 checks, 0 failures` / `PASS`.
+on a clean tree ends with `840 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -109,11 +109,14 @@ and **both** `modify_outgoing_damage(amount, stacks)` and
 `modify_incoming_damage(amount, stacks)` as statics — pass-through if
 unused, since `StatusRegistry` calls both unconditionally. Then add one
 line to `StatusRegistry.DEFINITIONS`. The damage pipeline needs no changes.
-Optionally drop an icon at `assets/icons/<status_id>.png` — FighterPanel
-then shows it as an icon + number badge on the fighter's rect and drops the
-status from its text line; without one, the text line carries it, which is
-a complete fallback, not an error. `DISPLAY_NAME` doubles as the card-text
-keyword: rules text naming it gets it coloured yellow and the hover tooltip
+Optionally drop an icon at `assets/icons/<status_id>.png` — the status's
+chip in FighterPanel's status area (a bordered dark badge under the health
+readout, one chip per active status, hover-tooltipped via
+`StatusTooltip.show_for_status`) then shows the icon beside its number;
+without one, the chip carries `DISPLAY_NAME` as text instead — a complete
+fallback, not an error. The number beside either is registry-driven:
+remaining turns when `SHOW_TURNS`, stacks otherwise. `DISPLAY_NAME`
+doubles as the card-text keyword: rules text naming it gets it coloured yellow and the hover tooltip
 (`StatusTooltip`, driven by `BattleView`) explains it. A status applied by
 a card with `extend_duration = true` on its `ApplyStatusEffect` ADDS
 durations on re-application (each Low Kick keeps the leg hurt one turn
@@ -365,9 +368,21 @@ portrait is one file). HP/AP icon frames are HUD chrome in `assets/ui/`,
 NOT `assets/icons/` (that directory stays reserved for status icons keyed
 by status id). `FighterPanel` no longer draws a rectangle: its face is the
 HP heart (value inside; centred until too wide, then anchored at the icon's
-centre growing rightward), the player-only AP bolt, a blue `+n` guard
-readout, and the status rows — while its hp/guard *diffing* brain, pulse
-decisions and `suppress_next_guard_pulse()` machinery survive unchanged.
+centre growing rightward), a blue `+n` guard readout, and the status chip
+area beneath them (dark bordered badges, one per active status — the chip
+ground is what makes the icons read against the bright portraits). Chips
+observe the mouse (`MOUSE_FILTER_STOP` on the chip, IGNORE everywhere
+else in the panel) and emit `status_hovered(id, anchor, hovered)`;
+`BattleHud` forwards both panels' signals and `BattleView` answers with
+`StatusTooltip.show_for_status`, which hangs BELOW the chip — above it
+would cover the hp readout it sits under. A no-op update skips the chip
+rebuild so a hovered chip is never freed under the cursor. The AP bolt is
+no longer in the panel at all: it is HUD chrome at the bottom-left corner
+(`BattleHud.AP_ICON_AT`, above the draw-pile label), and
+`test_hand_arc.gd` asserts the fan's rotated silhouette clears it at both
+of the icon's rows. The panel's hp/guard *diffing* brain, pulse
+decisions and `suppress_next_guard_pulse()` machinery survive unchanged
+(the guard-absorb punch now lands on the guard readout itself).
 Every label drawn over the portraits is styled by `HudText.style` (Kreon,
 white fill, black outline — the fighting-game legibility standard).
 
@@ -621,7 +636,7 @@ won during implementation and the spec was usually amended, but not always.
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
 fully art-directed down to the fight screen itself (portrait fight stage
 with a slam intro, icon readouts, outlined HUD text), sound effects on
-every battle beat (see "Sound" under Game feel), 823 headless checks.
+every battle beat (see "Sound" under Game feel), 840 headless checks.
 What is conspicuously still placeholder:
 
 - **No music, and the sound palette is minimal.** One click for all UI, no

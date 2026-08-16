@@ -4,7 +4,8 @@ const TestRunner := preload("res://tests/run_tests.gd")
 
 func run(t: TestRunner) -> void:
 	_test_initial_display(t)
-	_test_status_icons_show_their_countdown(t)
+	_test_status_chips_show_registry_numbers(t)
+	_test_chip_hover_emits_status_hovered(t)
 	_test_damage_pulse(t)
 	_test_guard_pulse(t)
 	_test_no_pulse_cases(t)
@@ -14,10 +15,9 @@ func run(t: TestRunner) -> void:
 	_test_suppress_flag_does_not_affect_damage(t)
 	_test_suppress_flag_clears_after_one_update(t)
 	_test_hp_value_overflow_rule(t)
-	_test_ap_only_on_player_panel(t)
 
 func _new_panel(align_right: bool) -> FighterPanel:
-	return FighterPanel.create("Enemy", align_right, not align_right)
+	return FighterPanel.create("Enemy", align_right)
 
 func _test_initial_display(t: TestRunner) -> void:
 	var panel: FighterPanel = _new_panel(true)
@@ -28,33 +28,68 @@ func _test_initial_display(t: TestRunner) -> void:
 	t.check_eq(panel.debug_last_pulse_kind, &"none", "the first update never pulses")
 	panel.free()
 
-## A status WITH an icon (leg injury) renders as icon + number under the
-## fighter and leaves the text line; one without (strength) stays in the
-## text line as before. The number beside the icon is what the registry says
-## to show -- remaining TURNS for leg injury, counting down each turn.
-func _test_status_icons_show_their_countdown(t: TestRunner) -> void:
-	var panel: FighterPanel = FighterPanel.create("Enemy", true, false)
+## EVERY status gets a chip in the dedicated area under the health readout
+## -- multiple at once. The number beside each icon is what the registry
+## says to show: remaining TURNS for leg injury (counting down each turn),
+## stacks for a magnitude like strength.
+func _test_status_chips_show_registry_numbers(t: TestRunner) -> void:
+	var panel: FighterPanel = FighterPanel.create("Enemy", true)
 	var fighter := Fighter.new("Enemy", 48)
 	fighter.statuses.apply(&"leg_injury", 1, 3)
 	fighter.statuses.apply(&"strength", 2, 2)
 
 	panel.update(fighter)
-	t.check_eq(panel.debug_status_icons(), [[&"leg_injury", 3]],
-		"leg injury shows as an icon with its remaining turns")
-	t.check(not panel.debug_status_text().contains("Leg Injury"),
-		"an icon status does not repeat in the text line")
-	t.check(panel.debug_status_text().contains("STR 2"),
-		"an icon-less status stays in the text line")
+	t.check_eq(panel.debug_status_chips(), [[&"leg_injury", 3], [&"strength", 2]],
+		"both statuses chip up at once: leg injury by turns, strength by stacks")
 
 	fighter.statuses.tick_turn_end()
 	panel.update(fighter)
-	t.check_eq(panel.debug_status_icons(), [[&"leg_injury", 2]],
-		"the number beside the icon counts down with the timer")
+	t.check_eq(panel.debug_status_chips(), [[&"leg_injury", 2], [&"strength", 2]],
+		"the countdown ticks while the magnitude holds")
 
 	fighter.statuses.tick_turn_end()
+	panel.update(fighter)
+	t.check_eq(panel.debug_status_chips(), [[&"leg_injury", 1]],
+		"an expired status drops its chip while others remain")
+
 	fighter.statuses.tick_turn_end()
 	panel.update(fighter)
-	t.check_eq(panel.debug_status_icons(), [], "an expired status drops its icon")
+	t.check_eq(panel.debug_status_chips(), [], "the area empties with the last status")
+	panel.free()
+
+## Chips observe the mouse and report hover outward -- BattleView owns the
+## tooltip, so the panel only says WHICH status and WHERE (bottom-centre of
+## the chip, in the panel's parent space, so the tooltip can hang below it).
+func _test_chip_hover_emits_status_hovered(t: TestRunner) -> void:
+	var panel: FighterPanel = FighterPanel.create("Player", false)
+	panel.position = Vector2(24, 56)
+	var fighter := Fighter.new("Player", 50)
+	fighter.statuses.apply(&"leg_injury", 1, 3)
+	panel.update(fighter)
+
+	var chips: Array = panel.debug_status_chip_nodes()
+	t.check_eq(chips.size(), 1, "one chip node per status")
+	if chips.is_empty():
+		panel.free()
+		return
+	var chip := chips[0] as Control
+	t.check(chip.mouse_filter != Control.MOUSE_FILTER_IGNORE,
+		"a chip observes the mouse, or the tooltip can never fire")
+
+	var events: Array = []
+	panel.status_hovered.connect(
+		func(id: StringName, anchor: Vector2, hovered: bool) -> void:
+			events.append([id, anchor, hovered]))
+	chip.mouse_entered.emit()
+	chip.mouse_exited.emit()
+	t.check_eq(events.size(), 2, "enter and exit both report")
+	if events.size() == 2:
+		t.check_eq(events[0][0], &"leg_injury", "the chip reports its status id")
+		t.check_eq(events[0][2], true, "entering reports hovered")
+		t.check_eq(events[1][2], false, "exiting reports unhovered")
+		var anchor: Vector2 = events[0][1]
+		t.check(anchor.y >= panel.position.y,
+			"the anchor is in the panel's PARENT space -- offset by the panel position")
 	panel.free()
 
 func _test_damage_pulse(t: TestRunner) -> void:
@@ -170,7 +205,7 @@ func _test_suppress_flag_clears_after_one_update(t: TestRunner) -> void:
 	panel.free()
 
 func _test_hp_value_overflow_rule(t: TestRunner) -> void:
-	var panel := FighterPanel.create("Player", false, true)
+	var panel := FighterPanel.create("Player", false)
 	var fighter := Fighter.new("Player", 50)
 	panel.update(fighter)
 	t.check(not panel.debug_value_overflowed(), "a short hp value centres in the icon window")
@@ -179,13 +214,3 @@ func _test_hp_value_overflow_rule(t: TestRunner) -> void:
 	panel.update(big)
 	t.check(panel.debug_value_overflowed(), "an overlong value anchors at the icon centre and grows right")
 	panel.free()
-
-func _test_ap_only_on_player_panel(t: TestRunner) -> void:
-	var player := FighterPanel.create("Player", false, true)
-	player.update_ap(2, 3)
-	t.check_eq(player.debug_ap_text(), "2 / 3", "the player panel shows AP inside the bolt")
-	var enemy := FighterPanel.create("Enemy", true, false)
-	enemy.update_ap(2, 3)
-	t.check_eq(enemy.debug_ap_text(), "", "the enemy panel has no AP readout")
-	player.free()
-	enemy.free()

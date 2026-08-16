@@ -11,6 +11,7 @@ func run(t: TestRunner) -> void:
 	_test_stage_is_bottom_layer(t)
 	_test_lunge_anchors_are_portrait_centres(t)
 	_test_ap_routes_to_player_panel(t)
+	_test_status_hover_forwarded(t)
 	_test_last_damage_side(t)
 	_test_last_absorb_amount(t)
 
@@ -69,7 +70,35 @@ func _test_lunge_anchors_are_portrait_centres(t: TestRunner) -> void:
 func _test_ap_routes_to_player_panel(t: TestRunner) -> void:
 	var hud := BattleHud.new()
 	hud.update_ap(2, 3)
-	t.check_eq(hud.debug_player_panel().debug_ap_text(), "2 / 3", "AP renders inside the player's bolt icon")
+	t.check_eq(hud.debug_ap_text(), "2 / 3",
+		"AP renders in the HUD's own bottom-left bolt readout")
+	t.check(BattleHud.AP_ICON_AT.y + BattleHud.AP_ICON_SIZE <= BattleHud.DRAW_LABEL_AT.y,
+		"the AP bolt sits above the draw-pile label, not on it")
+	t.check_eq(BattleHud.AP_ICON_AT.x, BattleHud.DRAW_LABEL_AT.x,
+		"the AP bolt shares the draw label's left margin")
+	hud.free()
+
+## The HUD owns the panels, so it is the one place both sides' chip hovers
+## can be forwarded from -- BattleView connects once, not per panel.
+func _test_status_hover_forwarded(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	var battle := BattleState.new(12345)
+	battle.start()
+	battle.player.statuses.apply(&"leg_injury", 1, 2)
+	hud.update_fighters(battle)
+
+	var chips: Array = hud.debug_player_panel().debug_status_chip_nodes()
+	t.check_eq(chips.size(), 1, "the player panel grew a chip for the applied status")
+	if chips.is_empty():
+		hud.free()
+		return
+	var events: Array = []
+	hud.status_hovered.connect(
+		func(id: StringName, _anchor: Vector2, hovered: bool) -> void:
+			events.append([id, hovered]))
+	(chips[0] as Control).mouse_entered.emit()
+	t.check_eq(events, [[&"leg_injury", true]],
+		"the HUD forwards its panels' chip hovers")
 	hud.free()
 
 func _test_last_damage_side(t: TestRunner) -> void:

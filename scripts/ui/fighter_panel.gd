@@ -11,9 +11,18 @@ extends Control
 
 const PANEL_SIZE: Vector2 = Vector2(210, 176)
 const ICON_SIZE: float = 72.0
-const AP_ICON_SIZE: float = 56.0
-const STATUS_ICON_SIZE: float = 24.0
+const STATUS_ICON_SIZE: float = 28.0
 const STATUS_ICON_GAP: float = 4.0
+
+## The chip row sits directly under the heart (0-72) and the guard readout
+## (74-94) -- the space the AP bolt vacated when it moved to the HUD's
+## bottom-left corner.
+const STATUS_ROW_Y: float = 98.0
+const STATUS_CHIP_GAP: float = 6.0
+const STATUS_CHIP_PAD: float = 3.0
+## Same dark ground as StatusTooltip's panel: the chip's job is to make the
+## icon stand out against the bright portrait behind it.
+const STATUS_CHIP_BG: Color = Color(0.08, 0.08, 0.10, 0.9)
 
 const DAMAGE_FLASH: Color = Color(1.0, 0.35, 0.35)
 const GUARD_FLASH: Color = Color(0.55, 0.85, 1.0)
@@ -27,6 +36,11 @@ const STATUS_COLOR: Color = Color(1.0, 0.82, 0.40)
 ## ordinary two-digit/two-digit reading.
 const VALUE_WINDOW_FRACTION: float = 0.75
 
+## A chip under the health readout was hovered (or unhovered): which status,
+## and the chip's bottom-centre in the panel's parent space -- the anchor a
+## tooltip hangs below.
+signal status_hovered(id: StringName, anchor: Vector2, hovered: bool)
+
 var align_right: bool = false
 
 ## What the most recent update() decided. Test hooks — the animation reads the
@@ -34,22 +48,20 @@ var align_right: bool = false
 var debug_last_pulse_kind: StringName = &"none"
 var debug_last_pulse_amount: int = 0
 
-var _status_label: Label
-## Icon + countdown badges for statuses that have an icon asset, sitting
-## in a row below the icon cluster. Parented to the icon cluster so the
-## damage shake carries them.
-var _status_icon_row: HBoxContainer
-## What the row currently displays, as [[id, number], ...]. Test hook.
-var _status_icon_entries: Array = []
+## One chip per active status, in a row under the health readout. Parented
+## to the icon cluster so the damage shake carries them.
+var _status_row: HBoxContainer
+## What the row currently displays, as [[id, number], ...]. Doubles as the
+## rebuild guard: an update that changes nothing keeps the existing chips,
+## so a hovered chip is not freed out from under the cursor. Test hook.
+var _status_chip_entries: Array = []
+var _status_chip_nodes: Array = []
 
 var _fighter_name: String = ""
-var _show_ap: bool = false
 var _icon_cluster: Control
 var _hp_icon: TextureRect
 var _hp_value: Label
 var _guard_label: Label
-var _ap_icon: TextureRect
-var _ap_value: Label = null
 ## The cluster's rest position -- what every shake returns to.
 var _cluster_home: Vector2 = Vector2.ZERO
 var _cluster_tween: Tween
@@ -58,10 +70,9 @@ var _last_hp: int = -1
 var _last_guard: int = 0
 var _suppress_guard_pulse: bool = false
 
-static func create(display_name: String, p_align_right: bool, p_show_ap: bool) -> FighterPanel:
+static func create(display_name: String, p_align_right: bool) -> FighterPanel:
 	var panel := FighterPanel.new()
 	panel.align_right = p_align_right
-	panel._show_ap = p_show_ap
 	panel._fighter_name = display_name.to_upper()
 	panel._build()
 	return panel
@@ -113,30 +124,17 @@ func _build() -> void:
 	_guard_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_icon_cluster.add_child(_guard_label)
 
-	if _show_ap:
-		var ap_x: float = icon_x + (ICON_SIZE - AP_ICON_SIZE) / 2.0
-		_ap_icon = _make_icon(&"ap", Vector2(ap_x, 96.0), AP_ICON_SIZE)
-		_ap_value = Label.new()
-		HudText.style(_ap_value, 13)
-		_ap_value.position = Vector2(ap_x, 96.0 + AP_ICON_SIZE * 0.36)
-		_ap_value.size = Vector2(AP_ICON_SIZE, 18.0)
-		_ap_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_ap_value.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_icon_cluster.add_child(_ap_value)
-
-	var rows_y: float = 150.0 if _show_ap else 120.0
-	_status_label = _make_row_label(14, rows_y + 26.0)
-	HudText.style(_status_label, 14)
-	_status_label.add_theme_color_override("font_color", STATUS_COLOR)
-
-	_status_icon_row = HBoxContainer.new()
-	_status_icon_row.add_theme_constant_override("separation", int(STATUS_ICON_GAP))
-	_status_icon_row.position = Vector2(0.0, rows_y)
-	_status_icon_row.size = Vector2(PANEL_SIZE.x, STATUS_ICON_SIZE)
-	_status_icon_row.alignment = BoxContainer.ALIGNMENT_END if align_right \
+	_status_row = HBoxContainer.new()
+	_status_row.add_theme_constant_override("separation", int(STATUS_CHIP_GAP))
+	_status_row.position = Vector2(0.0, STATUS_ROW_Y)
+	_status_row.size = Vector2(PANEL_SIZE.x, STATUS_ICON_SIZE + 2.0 * STATUS_CHIP_PAD)
+	_status_row.alignment = BoxContainer.ALIGNMENT_END if align_right \
 		else BoxContainer.ALIGNMENT_BEGIN
-	_status_icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_icon_cluster.add_child(_status_icon_row)
+	# IGNORE on the row, STOP on each chip: the row must not swallow clicks
+	# over the whole panel width, but the chips themselves observe the mouse
+	# for the tooltip.
+	_status_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_cluster.add_child(_status_row)
 
 func _make_icon(icon_name: StringName, at: Vector2, icon_size: float) -> TextureRect:
 	var icon := TextureRect.new()
@@ -157,24 +155,13 @@ func _make_icon(icon_name: StringName, at: Vector2, icon_size: float) -> Texture
 	_icon_cluster.add_child(icon)
 	return icon
 
-func _make_row_label(font_size: int, y: float) -> Label:
-	var label := Label.new()
-	label.add_theme_font_size_override("font_size", font_size)
-	label.position = Vector2(0.0, y)
-	label.size = Vector2(PANEL_SIZE.x, float(font_size) + 10.0)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(label)
-	return label
-
 ## Refreshes the display and reacts to whatever changed since the last call.
 func update(fighter: Fighter) -> void:
 	_hp_value.text = "%d / %d" % [fighter.hp, fighter.max_hp]
 	_layout_value_label(_hp_value, _hp_icon.position.x, ICON_SIZE)
 	_guard_label.text = "+%d" % fighter.guard
 	_guard_label.visible = fighter.guard > 0
-	_status_label.text = _status_line(fighter)
-	_rebuild_status_icons(fighter)
+	_rebuild_status_chips(fighter)
 
 	var kind: StringName = &"none"
 	var amount: int = 0
@@ -213,53 +200,89 @@ func update(fighter: Fighter) -> void:
 func suppress_next_guard_pulse() -> void:
 	_suppress_guard_pulse = true
 
-## Icon-less statuses, omitted entirely when none. A status with an icon
-## renders in _status_icon_row instead -- never in both places. Guard has
-## its own label now, so it does not appear here.
-func _status_line(fighter: Fighter) -> String:
-	var parts: Array[String] = []
+## One chip per active status -- EVERY status, icon or not. The number is
+## whichever counter the registry says matters: remaining turns for a
+## countdown like Leg Injury, stacks for a magnitude like strength. Skips
+## the rebuild when nothing changed, so a hovered chip is never freed out
+## from under the cursor by a no-op update.
+func _rebuild_status_chips(fighter: Fighter) -> void:
+	var entries: Array = []
 	for id: StringName in fighter.statuses.ids():
-		if CardArt.status_icon_for(id) != null:
-			continue
-		parts.append("%s %d" % [
-			StatusRegistry.display_name(id), fighter.statuses.get_stacks(id)
-		])
-	return "   ".join(parts)
-
-## One icon + number pair per status that has an icon asset. The number is
-## whichever counter the registry says matters for that status: remaining
-## turns for a countdown like Leg Injury, stacks for a magnitude.
-func _rebuild_status_icons(fighter: Fighter) -> void:
-	for child: Node in _status_icon_row.get_children():
-		_status_icon_row.remove_child(child)
-		child.free()
-	_status_icon_entries = []
-	for id: StringName in fighter.statuses.ids():
-		var icon: Texture2D = CardArt.status_icon_for(id)
-		if icon == null:
-			continue
 		var value: int = fighter.statuses.get_turns(id) if StatusRegistry.shows_turns(id) \
 			else fighter.statuses.get_stacks(id)
-		_status_icon_entries.append([id, value])
+		entries.append([id, value])
+	if entries == _status_chip_entries:
+		return
+	_status_chip_entries = entries
+	_status_chip_nodes = []
+	for child: Node in _status_row.get_children():
+		_status_row.remove_child(child)
+		child.free()
+	for entry: Array in entries:
+		_status_row.add_child(_make_status_chip(entry[0], entry[1]))
 
+## A dark badge that makes the status stand out against the portrait: icon
+## (or the registry's short name while a status has no icon asset yet) plus
+## its number, bordered in the status yellow.
+func _make_status_chip(id: StringName, value: int) -> Control:
+	var chip := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = STATUS_CHIP_BG
+	style.border_color = STATUS_COLOR
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	style.set_content_margin_all(STATUS_CHIP_PAD)
+	chip.add_theme_stylebox_override("panel", style)
+	chip.mouse_filter = Control.MOUSE_FILTER_STOP
+	chip.mouse_entered.connect(_on_chip_hover.bind(id, chip, true))
+	chip.mouse_exited.connect(_on_chip_hover.bind(id, chip, false))
+
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", int(STATUS_ICON_GAP))
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.add_child(box)
+
+	var icon: Texture2D = CardArt.status_icon_for(id)
+	if icon != null:
 		var image := TextureRect.new()
 		image.texture = icon
 		image.custom_minimum_size = Vector2.ONE * STATUS_ICON_SIZE
 		image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		image.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_status_icon_row.add_child(image)
+		box.add_child(image)
+	else:
+		var name_label := Label.new()
+		name_label.text = StatusRegistry.display_name(id)
+		HudText.style(name_label, 12)
+		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(name_label)
 
-		var number := Label.new()
-		number.text = str(value)
-		number.add_theme_font_size_override("font_size", 14)
-		number.modulate = STATUS_COLOR
-		number.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		number.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_status_icon_row.add_child(number)
+	var number := Label.new()
+	number.text = str(value)
+	HudText.style(number, 14)
+	number.modulate = STATUS_COLOR
+	number.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	number.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(number)
 
-func debug_status_icons() -> Array:
-	return _status_icon_entries
+	_status_chip_nodes.append(chip)
+	return chip
+
+## The anchor is the chip's bottom-centre in the panel's PARENT space (the
+## HUD), from rest geometry -- _cluster_home, not the live shaken position
+## -- so a tooltip anchored mid-shake does not land crooked.
+func _on_chip_hover(id: StringName, chip: Control, hovered: bool) -> void:
+	var anchor: Vector2 = position + _cluster_home + _status_row.position \
+		+ chip.position + Vector2(chip.size.x / 2.0, chip.size.y)
+	status_hovered.emit(id, anchor, hovered)
+
+func debug_status_chips() -> Array:
+	return _status_chip_entries
+
+func debug_status_chip_nodes() -> Array:
+	return _status_chip_nodes
 
 ## Centre of the hp icon in the panel's parent space -- the floater/particle
 ## anchor. Card lunges now aim at the PORTRAITS (FightStage centres).
@@ -278,7 +301,8 @@ func _pulse_damage(amount: int) -> void:
 func _pulse_guard(amount: int) -> void:
 	if not is_inside_tree():
 		return
-	_punch(_status_label, GUARD_FLASH)
+	# The guard readout is the thing that just worked, so it is what punches.
+	_punch(_guard_label, GUARD_FLASH)
 	_float_number("-%d guard" % amount, GUARD_FLASH)
 
 func _punch(label: Label, flash: Color) -> void:
@@ -287,10 +311,7 @@ func _punch(label: Label, flash: Color) -> void:
 	tween.tween_property(label, "scale", Vector2.ONE * Juice.PUNCH_SCALE, Juice.PUNCH_TIME * 0.4)
 	tween.parallel().tween_property(label, "modulate", flash, Juice.PUNCH_TIME * 0.4)
 	tween.tween_property(label, "scale", Vector2.ONE, Juice.PUNCH_TIME * 0.6)
-	tween.parallel().tween_property(label, "modulate", _label_rest_color(label), Juice.PUNCH_TIME * 0.6)
-
-func _label_rest_color(label: Label) -> Color:
-	return STATUS_COLOR if label == _status_label else Color.WHITE
+	tween.parallel().tween_property(label, "modulate", Color.WHITE, Juice.PUNCH_TIME * 0.6)
 
 ## A damage number that arcs and tumbles rather than drifting straight up --
 ## motion with a direction reads as thrown, not faded.
@@ -355,17 +376,5 @@ func _layout_value_label(label: Label, icon_x: float, icon_size: float) -> void:
 func debug_value_overflowed() -> bool:
 	return _value_overflowed
 
-func update_ap(current: int, maximum: int) -> void:
-	if not _show_ap:
-		return
-	_ap_value.text = "%d / %d" % [current, maximum]
-	_layout_value_label(_ap_value, _ap_icon.position.x, AP_ICON_SIZE)
-
-func debug_ap_text() -> String:
-	return "" if _ap_value == null else _ap_value.text
-
 func debug_hp_text() -> String:
 	return _hp_value.text
-
-func debug_status_text() -> String:
-	return _status_label.text
