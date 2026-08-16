@@ -15,6 +15,9 @@ const RESULT_PANEL_Z: int = 100
 
 ## Forwarded from both FighterPanels, so BattleView connects once.
 signal status_hovered(id: StringName, anchor: Vector2, hovered: bool)
+## The End Turn art carries no words; hovering the button reports here and
+## BattleView answers with a label tooltip above it.
+signal end_turn_hovered(anchor: Vector2, hovered: bool)
 
 ## Panels shrank and moved up to free vertical room for the larger card fan.
 ## (24, 56): a 24px margin from the left edge, mirrored by ENEMY_PANEL_AT's
@@ -35,35 +38,34 @@ const ENEMY_PANEL_AT: Vector2 = Vector2(918, 56)
 ## button's height -- see test_hand_arc.gd) at x ≈ 967, ~18px clear.
 ## END_TURN_SIZE.x = 150 puts the button's right edge at 1135, 17px from the
 ## design space's right edge (1152).
-const END_TURN_AT: Vector2 = Vector2(985, 570)
-const END_TURN_SIZE: Vector2 = Vector2(150, 48)
+## The textured plate is 3:2, so the button is taller than the old flat one
+## -- its top rises to y=525, which the fan's rotated edge still clears
+## (see test_hand_arc.gd).
+const END_TURN_AT: Vector2 = Vector2(985, 525)
+const END_TURN_SIZE: Vector2 = Vector2(150, 100)
 
-## Bottom-left corner control. DRAW_LABEL_AT.x = 16 mirrors
-## DISCARD_LABEL_AT on the right. The leftmost fanned card's true left-side
-## edge (HandView.rotated_left_edge_at_y) clears its row -- see
-## test_hand_arc.gd for the exact figures. (The bottom-left AP text label
-## that used to sit above this is gone -- the AP readout moved into the
-## player FighterPanel's icon cluster.)
-const DRAW_LABEL_AT: Vector2 = Vector2(16, 596)
-
-## The AP readout's corner spot: the bolt sits directly above the draw-pile
-## label, sharing its left margin, with a 16px gap to the label row.
-const AP_ICON_AT: Vector2 = Vector2(16, 524)
-const AP_ICON_SIZE: float = 56.0
-
-## Bottom-right pile count, mirroring DRAW_LABEL_AT. Right-aligned within
-## DISCARD_LABEL_SIZE so its rendered right edge lands at
-## DISCARD_LABEL_AT.x + DISCARD_LABEL_SIZE.x = 1136 (16px from the design
-## space's right edge) regardless of digit count, rather than growing
-## rightward off the edge the way a left-aligned label would.
-const DISCARD_LABEL_AT: Vector2 = Vector2(936, 620)
-const DISCARD_LABEL_SIZE: Vector2 = Vector2(200, 24)
+## The bottom-left corner stack: the AP bolt on top -- heart-sized, because
+## the player must read it at a glance -- with the draw-pile icon centred
+## beneath it. The pile counts render centred INSIDE their icons; the old
+## "draw n"/"discard n" text labels are gone. Both corners' rects are
+## checked against the fan's rotated silhouette in test_hand_arc.gd.
+const AP_ICON_AT: Vector2 = Vector2(16, 484)
+const AP_ICON_SIZE: float = 72.0
+const DRAW_ICON_AT: Vector2 = Vector2(24, 568)
+const PILE_ICON_SIZE: float = 56.0
+## Bottom-right: the discard icon above the End Turn button, right-aligned
+## with the button's right edge (DISCARD_ICON_AT.x + PILE_ICON_SIZE ==
+## END_TURN_AT.x + END_TURN_SIZE.x).
+const DISCARD_ICON_AT: Vector2 = Vector2(1079, 461)
 
 var _stage: FightStage
 var _turn_label: Label
 var _intent_label: Label
-var _draw_label: Label
-var _discard_label: Label
+var _draw_icon: TextureRect
+var _draw_value: Label
+var _discard_icon: TextureRect
+var _discard_value: Label
+var _end_turn_button: TextureButton
 var _player_panel: FighterPanel
 var _enemy_panel: FighterPanel
 var _result_panel: Control
@@ -120,30 +122,63 @@ func _build() -> void:
 	_ap_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_ap_icon)
 
-	_ap_value = _add_label("", AP_ICON_AT + Vector2(0.0, AP_ICON_SIZE * 0.36), 13)
-	_ap_value.size = Vector2(AP_ICON_SIZE, 18.0)
+	# Same font size as the HP value: the bolt is heart-sized now, and its
+	# number should read with the same weight.
+	_ap_value = _add_label("", AP_ICON_AT + Vector2(0.0, AP_ICON_SIZE * 0.36), 16)
+	_ap_value.size = Vector2(AP_ICON_SIZE, 22.0)
 	_ap_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HudText.style(_ap_value, 13)
+	HudText.style(_ap_value, 16)
 
-	_draw_label = _add_label("", DRAW_LABEL_AT, 14)
-	HudText.style(_draw_label, 14)
+	_draw_icon = _make_ui_icon(&"cards", DRAW_ICON_AT, PILE_ICON_SIZE)
+	_draw_value = _make_icon_value(DRAW_ICON_AT, PILE_ICON_SIZE)
+	_discard_icon = _make_ui_icon(&"discarded_cards", DISCARD_ICON_AT, PILE_ICON_SIZE)
+	_discard_value = _make_icon_value(DISCARD_ICON_AT, PILE_ICON_SIZE)
 
-	_discard_label = _add_label("", DISCARD_LABEL_AT, 14)
-	_discard_label.size = DISCARD_LABEL_SIZE
-	_discard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	HudText.style(_discard_label, 14)
-
-	var end_turn := Button.new()
-	end_turn.text = "END TURN"
-	end_turn.position = END_TURN_AT
-	end_turn.custom_minimum_size = END_TURN_SIZE
+	# The metal-plate art: rest texture normally, the recessed "clicked"
+	# variant while held -- the swap IS the press animation. The art carries
+	# no words, so hovering reports outward and a label tooltip answers.
+	_end_turn_button = TextureButton.new()
+	_end_turn_button.texture_normal = CardArt.ui_icon_for(&"end_turn_button")
+	_end_turn_button.texture_pressed = CardArt.ui_icon_for(&"end_turn_button_clicked")
+	_end_turn_button.ignore_texture_size = true
+	_end_turn_button.stretch_mode = TextureButton.STRETCH_SCALE
+	_end_turn_button.position = END_TURN_AT
+	_end_turn_button.size = END_TURN_SIZE
 	# No keyboard nav anywhere in the game: a focused button wears Godot's
 	# default white focus rectangle, which reads as a rendering glitch.
-	end_turn.focus_mode = Control.FOCUS_NONE
-	end_turn.pressed.connect(func() -> void: end_turn_pressed.emit())
-	add_child(end_turn)
+	_end_turn_button.focus_mode = Control.FOCUS_NONE
+	_end_turn_button.pressed.connect(func() -> void: end_turn_pressed.emit())
+	_end_turn_button.mouse_entered.connect(_on_end_turn_hover.bind(true))
+	_end_turn_button.mouse_exited.connect(_on_end_turn_hover.bind(false))
+	add_child(_end_turn_button)
 
 	_build_result_panel()
+
+func _make_ui_icon(icon_name: StringName, at: Vector2, icon_size: float) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = CardArt.ui_icon_for(icon_name)
+	# stretch/expand BEFORE position/size -- see FighterPanel._make_icon.
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.position = at
+	icon.size = Vector2.ONE * icon_size
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(icon)
+	return icon
+
+## A count centred in its icon, with the same optical downward nudge the
+## other icon values use (glyphs have no descender, so true centring parks
+## them high).
+func _make_icon_value(icon_at: Vector2, icon_size: float) -> Label:
+	var value := _add_label("", icon_at + Vector2(0.0, icon_size * 0.36), 14)
+	value.size = Vector2(icon_size, 18.0)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HudText.style(value, 14)
+	return value
+
+func _on_end_turn_hover(hovered: bool) -> void:
+	end_turn_hovered.emit(
+		Vector2(END_TURN_AT.x + END_TURN_SIZE.x / 2.0, END_TURN_AT.y), hovered)
 
 func _build_result_panel() -> void:
 	_result_panel = Control.new()
@@ -203,11 +238,20 @@ func update_ap(current: int, maximum: int) -> void:
 func debug_ap_text() -> String:
 	return _ap_value.text
 
+func debug_draw_text() -> String:
+	return _draw_value.text
+
+func debug_discard_text() -> String:
+	return _discard_value.text
+
+func debug_end_turn_button() -> TextureButton:
+	return _end_turn_button
+
 func update_fighters(battle: BattleState) -> void:
 	_player_panel.update(battle.player)
 	_enemy_panel.update(battle.enemy)
-	_draw_label.text = "draw %d" % battle.deck.draw_pile.size()
-	_discard_label.text = "discard %d" % battle.deck.discard_pile.size()
+	_draw_value.text = str(battle.deck.draw_pile.size())
+	_discard_value.text = str(battle.deck.discard_pile.size())
 
 ## The larger of the two panels' most recent damage pulses, or 0 if neither
 ## took damage. Lets the view react to a hit without BattleState carrying a

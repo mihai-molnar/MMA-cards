@@ -7,6 +7,7 @@ func run(t: TestRunner) -> void:
 	_test_tooltip_explains_the_combo(t)
 	_test_tooltip_hides_for_plain_cards(t)
 	_test_tooltip_for_single_status(t)
+	_test_label_tooltip(t)
 
 ## Combo has no status behind it -- the tooltip explains game-rule keywords
 ## too, with the ratio pulled from config via ComboRule.
@@ -47,6 +48,19 @@ func _test_tooltip_for_single_status(t: TestRunner) -> void:
 	tip.show_for_status(&"not_a_status", Vector2(200.0, 120.0))
 	t.check(not tip.visible,
 		"an unregistered id hides the tooltip rather than showing an empty panel")
+	tip.free()
+
+## A bare label tooltip -- the End Turn button's art carries no words, so
+## hovering it shows the words here, above the button like a card tooltip.
+func _test_label_tooltip(t: TestRunner) -> void:
+	var tip := StatusTooltip.new()
+	tip.show_label("END TURN", Vector2(800.0, 525.0))
+	t.check(tip.visible, "a label tooltip shows")
+	t.check(tip.debug_text().contains("END TURN"), "it carries the given words")
+	t.check(tip.position.y + tip.size.y < 525.0,
+		"it hangs above its anchor, clear of the button")
+	t.check(absf(tip.position.x + tip.size.x / 2.0 - 800.0) < 1.0,
+		"it is centred on the anchor")
 	tip.free()
 
 func _test_tooltip_hides_for_plain_cards(t: TestRunner) -> void:

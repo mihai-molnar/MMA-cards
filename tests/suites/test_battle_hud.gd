@@ -12,6 +12,8 @@ func run(t: TestRunner) -> void:
 	_test_lunge_anchors_are_portrait_centres(t)
 	_test_ap_routes_to_player_panel(t)
 	_test_status_hover_forwarded(t)
+	_test_pile_readouts_are_icon_counts(t)
+	_test_end_turn_button_texture_states(t)
 	_test_last_damage_side(t)
 	_test_last_absorb_amount(t)
 
@@ -72,10 +74,64 @@ func _test_ap_routes_to_player_panel(t: TestRunner) -> void:
 	hud.update_ap(2, 3)
 	t.check_eq(hud.debug_ap_text(), "2 / 3",
 		"AP renders in the HUD's own bottom-left bolt readout")
-	t.check(BattleHud.AP_ICON_AT.y + BattleHud.AP_ICON_SIZE <= BattleHud.DRAW_LABEL_AT.y,
-		"the AP bolt sits above the draw-pile label, not on it")
-	t.check_eq(BattleHud.AP_ICON_AT.x, BattleHud.DRAW_LABEL_AT.x,
-		"the AP bolt shares the draw label's left margin")
+	t.check_eq(BattleHud.AP_ICON_SIZE, FighterPanel.ICON_SIZE,
+		"the AP bolt is as large as the HP hearts -- it must read at a glance")
+	t.check(BattleHud.AP_ICON_AT.y + BattleHud.AP_ICON_SIZE <= BattleHud.DRAW_ICON_AT.y,
+		"the AP bolt sits above the draw-pile icon, not on it")
+	hud.free()
+
+## The pile counts are numbers centred in their icons now -- the "draw n"
+## and "discard n" text placeholders are gone. Draw stacks under the AP
+## bolt bottom-left; discard sits above the End Turn button, right-aligned
+## with it.
+func _test_pile_readouts_are_icon_counts(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	var battle := BattleState.new(12345)
+	battle.start()
+	hud.update_fighters(battle)
+	t.check_eq(hud.debug_draw_text(), str(battle.deck.draw_pile.size()),
+		"the draw icon carries the bare count, no 'draw' prefix")
+	t.check_eq(hud.debug_discard_text(), str(battle.deck.discard_pile.size()),
+		"the discard icon carries the bare count, no 'discard' prefix")
+	t.check(BattleHud.DISCARD_ICON_AT.y + BattleHud.PILE_ICON_SIZE <= BattleHud.END_TURN_AT.y,
+		"the discard icon sits above the End Turn button, not on it")
+	t.check_eq(BattleHud.DISCARD_ICON_AT.x + BattleHud.PILE_ICON_SIZE,
+		BattleHud.END_TURN_AT.x + BattleHud.END_TURN_SIZE.x,
+		"the discard icon is right-aligned with the End Turn button")
+	hud.free()
+
+## The End Turn button wears the metal-plate art: normal texture at rest,
+## the clicked (recessed) texture while held -- a real press animation with
+## no tween needed. The art carries no words, so the hover tooltip does.
+func _test_end_turn_button_texture_states(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	var button: TextureButton = hud.debug_end_turn_button()
+	t.check(button != null, "the End Turn button is a TextureButton now")
+	if button == null:
+		hud.free()
+		return
+	t.check(button.texture_normal != null, "the rest art is loaded")
+	t.check(button.texture_pressed != null, "the pressed art is loaded")
+	t.check(button.texture_normal != button.texture_pressed,
+		"pressing visibly swaps the art -- the two textures differ")
+	t.check(button.ignore_texture_size,
+		"the button scales the art to its rect, not the art's 1536px native size")
+	t.check_eq(button.focus_mode, Control.FOCUS_NONE,
+		"no focus rectangle after a click, same as every other button")
+	var events: Array = []
+	hud.end_turn_hovered.connect(
+		func(anchor: Vector2, hovered: bool) -> void:
+			events.append([anchor, hovered]))
+	button.mouse_entered.emit()
+	button.mouse_exited.emit()
+	t.check_eq(events.size(), 2, "hover in and out both report")
+	if events.size() == 2:
+		t.check_eq(events[0][1], true, "entering reports hovered")
+		t.check_eq(events[1][1], false, "exiting reports unhovered")
+		var anchor: Vector2 = events[0][0]
+		t.check_eq(anchor, Vector2(BattleHud.END_TURN_AT.x + BattleHud.END_TURN_SIZE.x / 2.0,
+			BattleHud.END_TURN_AT.y),
+			"the anchor is the button's top-centre, for a tooltip hanging above")
 	hud.free()
 
 ## The HUD owns the panels, so it is the one place both sides' chip hovers

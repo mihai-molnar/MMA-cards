@@ -78,6 +78,7 @@ func _build_ui() -> void:
 	hud.restart_pressed.connect(_on_restart_pressed)
 	hud.continue_pressed.connect(_on_continue_pressed)
 	hud.status_hovered.connect(_on_status_hovered)
+	hud.end_turn_hovered.connect(_on_end_turn_hovered)
 	layer.add_child(hud)
 
 	hand_view = HandView.new()
@@ -160,6 +161,13 @@ func _on_card_hovered(view: CardView, hovered: bool) -> void:
 func _on_status_hovered(id: StringName, anchor: Vector2, hovered: bool) -> void:
 	if hovered:
 		status_tooltip.show_for_status(id, anchor)
+	else:
+		status_tooltip.hide_tooltip()
+
+## The End Turn plate has no words on it; hovering it says what it does.
+func _on_end_turn_hovered(anchor: Vector2, hovered: bool) -> void:
+	if hovered:
+		status_tooltip.show_label("END TURN", anchor)
 	else:
 		status_tooltip.hide_tooltip()
 

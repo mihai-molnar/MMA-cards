@@ -20,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `840 checks, 0 failures` / `PASS`.
+on a clean tree ends with `860 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -364,7 +364,8 @@ beyond that one deferred `start()`), and per-side hit feedback
 `BattleHud.last_damage_side()`). Portraits resolve by fighter id via
 `CardArt.portrait_for` (`assets/portraits/<id>.png` — the player is
 `player`, an opponent's id is its `OpponentData.id`, so a new opponent's
-portrait is one file). HP/AP icon frames are HUD chrome in `assets/ui/`,
+portrait is one file). HP/AP icon frames, the draw/discard pile icons and
+the End Turn button plates are HUD chrome in `assets/ui/`,
 NOT `assets/icons/` (that directory stays reserved for status icons keyed
 by status id). `FighterPanel` no longer draws a rectangle: its face is the
 HP heart (value inside; centred until too wide, then anchored at the icon's
@@ -378,9 +379,18 @@ else in the panel) and emit `status_hovered(id, anchor, hovered)`;
 would cover the hp readout it sits under. A no-op update skips the chip
 rebuild so a hovered chip is never freed under the cursor. The AP bolt is
 no longer in the panel at all: it is HUD chrome at the bottom-left corner
-(`BattleHud.AP_ICON_AT`, above the draw-pile label), and
-`test_hand_arc.gd` asserts the fan's rotated silhouette clears it at both
-of the icon's rows. The panel's hp/guard *diffing* brain, pulse
+(`BattleHud.AP_ICON_AT`, heart-sized so it reads at a glance, above the
+draw-pile icon), and `test_hand_arc.gd` asserts the fan's rotated
+silhouette clears it at both of the icon's rows. The pile counts render
+centred INSIDE their icons (`cards.png` bottom-left, `discarded_cards.png`
+above the End Turn button, right-aligned with it) — there are no "draw n"
+/ "discard n" text labels any more, and both icon rects get the same
+per-row silhouette clearance checks. The End Turn button is a
+`TextureButton` wearing the metal-plate art: normal texture at rest, the
+recessed "clicked" variant while held (the swap is the press animation).
+The plate carries no words, so hovering it emits
+`BattleHud.end_turn_hovered` and `BattleView` answers with
+`StatusTooltip.show_label("END TURN", ...)` above the button. The panel's hp/guard *diffing* brain, pulse
 decisions and `suppress_next_guard_pulse()` machinery survive unchanged
 (the guard-absorb punch now lands on the guard readout itself).
 Every label drawn over the portraits is styled by `HudText.style` (Kreon,
@@ -636,7 +646,7 @@ won during implementation and the spec was usually amended, but not always.
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
 fully art-directed down to the fight screen itself (portrait fight stage
 with a slam intro, icon readouts, outlined HUD text), sound effects on
-every battle beat (see "Sound" under Game feel), 840 headless checks.
+every battle beat (see "Sound" under Game feel), 860 headless checks.
 What is conspicuously still placeholder:
 
 - **No music, and the sound palette is minimal.** One click for all UI, no

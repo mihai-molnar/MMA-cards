@@ -70,10 +70,24 @@ func show_for_status(id: StringName, anchor_bottom_centre: Vector2) -> void:
 	position = anchor_bottom_centre + Vector2(-size.x / 2.0, ANCHOR_GAP)
 	_clamp_to_viewport()
 
-func _populate(ids: Array[StringName]) -> void:
+## A bare one-line label -- the End Turn button's art carries no words, so
+## its hover shows them here, above the button like a card tooltip.
+func show_label(text: String, anchor_top_centre: Vector2) -> void:
+	_clear_rows()
+	_rows.add_child(_make_row_label(text,
+		CardTemplate.RULES_KEYWORD_COLOR, CardTemplate.DISPLAY_FONT, NAME_SIZE))
+	visible = true
+	reset_size()
+	position = anchor_top_centre - Vector2(size.x / 2.0, size.y + ANCHOR_GAP)
+	_clamp_to_viewport()
+
+func _clear_rows() -> void:
 	for child: Node in _rows.get_children():
 		_rows.remove_child(child)
 		child.free()
+
+func _populate(ids: Array[StringName]) -> void:
+	_clear_rows()
 	for id: StringName in ids:
 		_rows.add_child(_make_row_label(CardTemplate.keyword_title(id),
 			CardTemplate.RULES_KEYWORD_COLOR, CardTemplate.DISPLAY_FONT, NAME_SIZE))

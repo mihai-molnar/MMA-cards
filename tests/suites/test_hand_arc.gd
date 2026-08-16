@@ -7,7 +7,8 @@ func run(t: TestRunner) -> void:
 	_test_single_card(t)
 	_test_empty_hand(t)
 	_test_clear_of_end_turn_button(t)
-	_test_clear_of_draw_label(t)
+	_test_clear_of_draw_icon(t)
+	_test_clear_of_discard_icon(t)
 	_test_clear_of_ap_readout(t)
 	_test_clear_hover(t)
 	_test_layout_invariants_across_hand_sizes(t)
@@ -93,31 +94,36 @@ func _test_clear_of_end_turn_button(t: TestRunner) -> void:
 		"the fan stays clear of the End Turn button (right edge %f)" % right_edge)
 	view.free()
 
-## Mirror of _test_clear_of_end_turn_button for the draw-pile label,
-## bottom-left. Previously nothing checked this side at all -- the reflow
-## pushed both corner controls toward the edges, and while the End Turn side
-## was the tighter of the two (see above), the left side is a real
-## constraint now too, not a formality. (Retargeted from the old bottom-left
-## AP text label to the draw-pile label beneath it: the AP readout moved
-## into the FighterPanel's icon cluster, but the draw label still sits at
-## the same corner and is checked by the same rotated-silhouette method.)
-func _test_clear_of_draw_label(t: TestRunner) -> void:
-	var font: Font = ThemeDB.fallback_font
-	var deck_total: int = 0
-	for copies: int in BattleConfig.DECK_COMPOSITION.values():
-		deck_total += copies
-	var draw_text: String = "draw %d" % deck_total
-	var draw_right_edge: float = BattleHud.DRAW_LABEL_AT.x \
-		+ font.get_string_size(draw_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
-
+## Mirror of _test_clear_of_end_turn_button for the draw-pile icon,
+## bottom-left (retargeted from the deleted "draw n" text label -- the
+## count lives centred inside the cards icon now). Checked at the icon's
+## top and bottom rows, since the leaning card's edge varies with height.
+func _test_clear_of_draw_icon(t: TestRunner) -> void:
+	var draw_right_edge: float = BattleHud.DRAW_ICON_AT.x + BattleHud.PILE_ICON_SIZE
 	var view: HandView = _hand_with([&"jab", &"straight", &"jab", &"block", &"straight"])
 	var leftmost: CardView = view.get_child(0) as CardView
-	var left_edge: float = HandView.rotated_left_edge_at_y(
-		leftmost.rest_position.x, leftmost.rest_position.y, leftmost.rest_rotation,
-		BattleHud.DRAW_LABEL_AT.y)
-	t.check(left_edge > draw_right_edge,
-		"the fan stays clear of the draw label (left edge %f, label right edge %f)" % [
-			left_edge, draw_right_edge])
+	for row_y: float in [BattleHud.DRAW_ICON_AT.y, BattleHud.DRAW_ICON_AT.y + BattleHud.PILE_ICON_SIZE]:
+		var left_edge: float = HandView.rotated_left_edge_at_y(
+			leftmost.rest_position.x, leftmost.rest_position.y, leftmost.rest_rotation,
+			row_y)
+		t.check(left_edge > draw_right_edge,
+			"the fan stays clear of the draw icon at y %.0f (left edge %f, icon right edge %f)" % [
+				row_y, left_edge, draw_right_edge])
+	view.free()
+
+## The discard icon moved above the End Turn button (its old label row is
+## now under the taller textured button), so the RIGHT side needs the same
+## per-row check against the rightmost card.
+func _test_clear_of_discard_icon(t: TestRunner) -> void:
+	var view: HandView = _hand_with([&"jab", &"straight", &"jab", &"block", &"straight"])
+	var rightmost: CardView = view.get_child(view.get_child_count() - 1) as CardView
+	for row_y: float in [BattleHud.DISCARD_ICON_AT.y, BattleHud.DISCARD_ICON_AT.y + BattleHud.PILE_ICON_SIZE]:
+		var right_edge: float = HandView.rotated_right_edge_at_y(
+			rightmost.rest_position.x, rightmost.rest_position.y, rightmost.rest_rotation,
+			row_y)
+		t.check(right_edge < BattleHud.DISCARD_ICON_AT.x,
+			"the fan stays clear of the discard icon at y %.0f (right edge %f)" % [
+				row_y, right_edge])
 	view.free()
 
 ## The AP readout returned to the bottom-left corner (the bolt sits above
@@ -162,12 +168,7 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 	var pool: Array[StringName] = [
 		&"jab", &"straight", &"jab", &"block", &"straight"
 	]
-	var font: Font = ThemeDB.fallback_font
-	var deck_total: int = 0
-	for copies: int in BattleConfig.DECK_COMPOSITION.values():
-		deck_total += copies
-	var draw_right_edge: float = BattleHud.DRAW_LABEL_AT.x + font.get_string_size(
-		"draw %d" % deck_total, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+	var draw_right_edge: float = BattleHud.DRAW_ICON_AT.x + BattleHud.PILE_ICON_SIZE
 
 	for n: int in range(1, 6):
 		var ids: Array = pool.slice(0, n)
@@ -184,9 +185,9 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 		var leftmost: CardView = view.get_child(0) as CardView
 		var left_edge: float = HandView.rotated_left_edge_at_y(
 			leftmost.rest_position.x, leftmost.rest_position.y, leftmost.rest_rotation,
-			BattleHud.DRAW_LABEL_AT.y)
+			BattleHud.DRAW_ICON_AT.y + BattleHud.PILE_ICON_SIZE)
 		t.check(left_edge > draw_right_edge,
-			"hand of %d clears the draw label (left edge %f, label right edge %f)" % [
+			"hand of %d clears the draw icon (left edge %f, icon right edge %f)" % [
 				n, left_edge, draw_right_edge])
 
 		# Regression guard for the bottom-clip fix: a card's rotated bottom
