@@ -20,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `774 checks, 0 failures` / `PASS`.
+on a clean tree ends with `783 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -223,7 +223,26 @@ stale number; the card itself prints no bonus number at all). Matching is
 word-bounded and case-insensitive so STR never fires inside STRAIGHT. Any
 card whose text names a keyword gets the `StatusTooltip` above it on hover.
 The colour tags add no visible characters, so the wrap tests measure
-`rules_plain()` and model exactly what the label renders.
+`rules_plain()` and model what the label renders — with one qualification,
+below, for live previews.
+
+**Card faces preview live damage.** `rules_bbcode(card, source, target)`
+takes two optional `Fighter`s; when both are given and the card has a sole
+`DamageEffect`, the printed damage number is replaced by
+`Combat.preview_damage()` — the same pipeline the telegraph and
+`resolve_damage` use, so the face cannot diverge from what the hit will do.
+A weakened number (Leg Injury halving your kicks) turns orange
+(`RULES_WEAKENED_COLOR`); a buffed one stays red — a buff still reads as a
+plain hit. `HandView.refresh_states()` calls
+`CardView.update_rules_preview(battle.player, battle.enemy)` on every hand
+card whenever `BattleView` refreshes (ap, fighters, hand changes), and
+called with `null`s the output is byte-identical to the un-previewed
+render — pinned by `test_card_preview.gd`. The qualification: a preview
+*replaces* the number's text, so a previewed face can render text the
+`rules_plain()` wrap tests do not model. Today previews only shrink
+numbers (the player has no strength source); the day a source-side buff
+can widen one ("9" → "11"), the painted-panel wrap tests stop covering
+the previewed face and need a preview-aware case.
 
 **Geometry and typography live in `scripts/ui/card_template.gd`**, as zones
 normalized to 0-1 fractions of the card rect rather than pixels — `CARD_SIZE`
@@ -569,7 +588,7 @@ won during implementation and the spec was usually amended, but not always.
 
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
 fully art-directed down to the fight screen itself (portrait fight stage
-with a slam intro, icon readouts, outlined HUD text), 774 headless checks.
+with a slam intro, icon readouts, outlined HUD text), 783 headless checks.
 What is conspicuously still placeholder:
 
 - **No sound.** Deliberately deferred from the juice pass — it needs audio

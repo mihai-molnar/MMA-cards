@@ -91,6 +91,12 @@ func set_portraits(player_id: StringName, enemy_id: StringName) -> void:
 ## recorded either way.
 func slam_in(on_impact: Callable, on_settled: Callable) -> void:
 	debug_slam_count += 1
+	# A portrait shake still in flight also tweens half.position; killing
+	# only _slam_tween would leave the two fighting over the same property.
+	for side: StringName in _shake_tweens:
+		var shake_tween: Tween = _shake_tweens[side]
+		if shake_tween != null and shake_tween.is_valid():
+			shake_tween.kill()
 	_left.position = _left_home + Vector2(-HALF_SIZE.x, 0.0)
 	_right.position = _right_home + Vector2(HALF_SIZE.x, 0.0)
 	if not is_inside_tree():

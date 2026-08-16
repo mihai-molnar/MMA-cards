@@ -109,6 +109,11 @@ func play_card(index: int) -> bool:
 func end_turn() -> void:
 	if is_over:
 		return
+	# turn_number is 0 until start() opens turn 1. The view defers start()
+	# behind the slam animation while the End Turn button already exists, so
+	# a click in that window must not run an enemy turn or draw a hand.
+	if turn_number == 0:
+		return
 	deck.discard_hand()
 	player.tick_statuses_turn_end()
 	hand_changed.emit()

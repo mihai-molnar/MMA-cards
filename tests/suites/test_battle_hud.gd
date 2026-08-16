@@ -74,4 +74,22 @@ func _test_ap_routes_to_player_panel(t: TestRunner) -> void:
 func _test_last_damage_side(t: TestRunner) -> void:
 	var hud := BattleHud.new()
 	t.check_eq(hud.last_damage_side(), &"none", "no update yet, no side")
+
+	var battle := BattleState.new(12345)
+	battle.start()
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_damage_side(), &"none", "the baseline update reports no side")
+
+	battle.enemy.hp -= 4
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_damage_side(), &"enemy", "an enemy hp drop reads as the enemy side")
+
+	battle.player.hp -= 6
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_damage_side(), &"player", "a player hp drop reads as the player side")
+
+	battle.player.hp -= 3
+	battle.enemy.hp -= 3
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_damage_side(), &"player", "an equal double hit ties to the player side")
 	hud.free()

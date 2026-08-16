@@ -4,6 +4,7 @@ const TestRunner := preload("res://tests/run_tests.gd")
 
 func run(t: TestRunner) -> void:
 	_test_start(t)
+	_test_end_turn_before_start_is_noop(t)
 	_test_turn_counter(t)
 	_test_ap(t)
 	_test_player_guard_timing(t)
@@ -23,6 +24,21 @@ func _test_start(t: TestRunner) -> void:
 	t.check_eq(battle.ap, 3, "the player starts with 3 AP")
 	t.check_eq(battle.deck.hand.size(), 5, "the opening hand holds 5 cards")
 	t.check(not battle.is_over, "the battle is not over at the start")
+
+## BattleView defers start() behind the slam animation, so the End Turn
+## button exists for ~0.8s against an un-started battle. end_turn() before
+## the first turn must be a no-op: without the guard it runs a free enemy
+## attack and a draw that start() then doubles into a 10-card hand.
+func _test_end_turn_before_start_is_noop(t: TestRunner) -> void:
+	var battle := BattleState.new(12345)
+	var hp_before: int = battle.player.hp
+	battle.end_turn()
+	t.check_eq(battle.turn_number, 0, "end_turn before start does not begin a turn")
+	t.check_eq(battle.player.hp, hp_before, "end_turn before start gives the enemy no free attack")
+	t.check_eq(battle.deck.hand.size(), 0, "end_turn before start draws no cards")
+	battle.start()
+	t.check_eq(battle.deck.hand.size(), BattleConfig.HAND_SIZE, "start() after a premature end_turn still deals a normal hand")
+	t.check_eq(battle.turn_number, 1, "start() after a premature end_turn opens turn 1")
 
 func _test_turn_counter(t: TestRunner) -> void:
 	var battle: BattleState = _new_battle()
