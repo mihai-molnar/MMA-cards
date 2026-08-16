@@ -5,6 +5,7 @@ const TestRunner := preload("res://tests/run_tests.gd")
 func run(t: TestRunner) -> void:
 	_test_hit_sound_for_card(t)
 	_test_hit_sound_for_moves(t)
+	_test_impact_sound(t)
 	_test_streams_are_registered(t)
 	_test_play_records_decision_before_tree_guard(t)
 	_test_detached_is_safe(t)
@@ -45,12 +46,30 @@ func _test_hit_sound_for_moves(t: TestRunner) -> void:
 	t.check_eq(SoundFx.hit_sound_for_moves([]), &"",
 		"an empty move list warrants no hit sound")
 
+## What actually plays at the landing moment: hp damage keeps the attack's
+## own sound, a hit swallowed entirely by guard slaps instead, and with no
+## attack in flight (hit_sound empty -- a guard expiry or buff update)
+## nothing plays no matter what the diff recorded.
+func _test_impact_sound(t: TestRunner) -> void:
+	t.check_eq(SoundFx.impact_sound(&"punch", 5, 0), &"punch",
+		"an unblocked punch keeps its punch")
+	t.check_eq(SoundFx.impact_sound(&"punch", 3, 2), &"punch",
+		"a partially blocked hit still lands as its own sound -- hp was lost")
+	t.check_eq(SoundFx.impact_sound(&"punch", 0, 4), &"slap",
+		"a punch fully absorbed by guard lands as a slap")
+	t.check_eq(SoundFx.impact_sound(&"kick", 0, 4), &"slap",
+		"a kick fully absorbed by guard lands as a slap too")
+	t.check_eq(SoundFx.impact_sound(&"", 0, 4), &"",
+		"a guard drop with no attack in flight stays silent")
+	t.check_eq(SoundFx.impact_sound(&"punch", 0, 0), &"",
+		"an attack that touched neither hp nor guard stays silent")
+
 ## Every sound id the view fires must resolve to at least one loaded
 ## stream, and the punch carries its three variations. This is what catches
 ## a moved or misnamed wav headless -- playback itself cannot be heard by
 ## a test.
 func _test_streams_are_registered(t: TestRunner) -> void:
-	for id: StringName in [&"punch", &"kick", &"card_fan", &"click", &"slam"]:
+	for id: StringName in [&"punch", &"kick", &"card_fan", &"click", &"slam", &"slap"]:
 		var variants: Array = SoundFx.variants_for(id)
 		t.check(variants.size() >= 1, "sound id %s has at least one stream" % id)
 		for stream: Variant in variants:
@@ -77,7 +96,7 @@ func _test_detached_is_safe(t: TestRunner) -> void:
 	# A detached SoundFx must neither crash nor push an engine error for any
 	# registered id -- the wrapper fails the run on engine error markers.
 	var fx := SoundFx.new()
-	for id: StringName in [&"punch", &"kick", &"card_fan", &"click", &"slam"]:
+	for id: StringName in [&"punch", &"kick", &"card_fan", &"click", &"slam", &"slap"]:
 		fx.play(id)
 	t.check(true, "playing every sound on a detached SoundFx produces no engine error")
 	fx.free()

@@ -24,11 +24,12 @@ const _STREAMS: Dictionary = {
 	&"card_fan": [preload("res://assets/audio/card_fan.wav")],
 	&"click": [preload("res://assets/audio/click_double_on.wav")],
 	&"slam": [preload("res://assets/audio/metal_clang.wav")],
+	&"slap": [preload("res://assets/audio/slap.wav")],
 }
 
 ## Only impact sounds get pitch-varied: a UI click that changes pitch reads
 ## as a different control, not as variety.
-const _PITCH_VARIED: Array[StringName] = [&"punch", &"kick"]
+const _PITCH_VARIED: Array[StringName] = [&"punch", &"kick", &"slap"]
 
 const _POOL_SIZE: int = 6
 
@@ -80,6 +81,20 @@ static func hit_sound_for_card(card: CardData) -> StringName:
 	if card.has_tag(&"kick"):
 		return &"kick"
 	return &"punch"
+
+## What actually plays at the landing moment. An attack that cost hp keeps
+## its own sound; one swallowed entirely by guard lands as a slap instead;
+## and with no attack in flight (hit_sound empty -- a guard expiry or a
+## buff-only update) nothing plays regardless of what the diff recorded.
+static func impact_sound(hit_sound: StringName, hp_damage: int,
+		absorbed: int) -> StringName:
+	if hit_sound == &"":
+		return &""
+	if hp_damage > 0:
+		return hit_sound
+	if absorbed > 0:
+		return &"slap"
+	return &""
 
 ## The enemy-turn analogue, read from the coming turn's moves before
 ## end_turn() resolves them. Opponent moves have labels, not tags, so a

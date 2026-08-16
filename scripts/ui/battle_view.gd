@@ -202,10 +202,15 @@ func _land_intent_update() -> void:
 func _land_fighter_update(hit_sound: StringName = &"") -> void:
 	hud.update_fighters(battle)
 	var amount: int = hud.last_damage_amount()
+	# A fully blocked hit costs no hp, so it takes none of the impact juice
+	# below -- but it still SOUNDS: impact_sound swaps the attack's own sound
+	# for a slap when guard soaked all of it.
+	var sound: StringName = SoundFx.impact_sound(
+		hit_sound, amount, hud.last_absorb_amount())
+	if sound != &"":
+		sound_fx.play(sound)
 	if amount > 0:
 		_fire_impact(amount)
-		if hit_sound != &"":
-			sound_fx.play(hit_sound)
 		var side: StringName = hud.last_damage_side()
 		hud.stage().flash_hit(side)
 		hud.stage().shake(side, Juice.portrait_shake_amplitude(amount))

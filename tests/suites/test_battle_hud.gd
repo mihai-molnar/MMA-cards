@@ -12,6 +12,7 @@ func run(t: TestRunner) -> void:
 	_test_lunge_anchors_are_portrait_centres(t)
 	_test_ap_routes_to_player_panel(t)
 	_test_last_damage_side(t)
+	_test_last_absorb_amount(t)
 
 func _test_fight_intro_banner(t: TestRunner) -> void:
 	var hud := BattleHud.new()
@@ -92,4 +93,37 @@ func _test_last_damage_side(t: TestRunner) -> void:
 	battle.enemy.hp -= 3
 	hud.update_fighters(battle)
 	t.check_eq(hud.last_damage_side(), &"player", "an equal double hit ties to the player side")
+	hud.free()
+
+## The absorb mirror of last_damage_amount(): how much guard the most recent
+## update saw soaked with hp untouched -- what tells the view a hit was
+## fully blocked (the slap) rather than landed (the punch).
+func _test_last_absorb_amount(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	t.check_eq(hud.last_absorb_amount(), 0, "no update yet, no absorb")
+
+	var battle := BattleState.new(12345)
+	battle.start()
+	battle.player.guard = 5
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_absorb_amount(), 0, "gaining guard is not an absorb")
+
+	battle.player.guard = 2
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_absorb_amount(), 3,
+		"a guard drop with hp untouched reads as that much absorbed")
+
+	battle.player.guard = 0
+	battle.player.hp -= 4
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_absorb_amount(), 0,
+		"a broken-through hit reads as damage, not absorb")
+
+	battle.enemy.guard = 6
+	hud.update_fighters(battle)
+	hud.suppress_enemy_guard_pulse()
+	battle.enemy.guard = 0
+	hud.update_fighters(battle)
+	t.check_eq(hud.last_absorb_amount(), 0,
+		"a suppressed guard expiry does not read as an absorb")
 	hud.free()

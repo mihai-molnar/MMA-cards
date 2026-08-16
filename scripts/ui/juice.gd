@@ -213,6 +213,7 @@ const SFX_VOLUME_DB: Dictionary = {
 	&"card_fan": -6.0,
 	&"click": -8.0,
 	&"slam": 0.0,
+	&"slap": -3.0,
 }
 
 # --- Portrait hit feedback ------------------------------------------------

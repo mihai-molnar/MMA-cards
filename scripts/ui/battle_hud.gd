@@ -186,6 +186,14 @@ func last_damage_amount() -> int:
 	var enemy_hit: int = _enemy_panel.debug_last_pulse_amount if _enemy_panel.debug_last_pulse_kind == &"damage" else 0
 	return maxi(player_hit, enemy_hit)
 
+## The absorb mirror of last_damage_amount(): the larger of the two panels'
+## most recent guard-absorb pulses, or 0 if neither soaked a hit. A
+## suppressed expiry records kind "none", so it never counts here.
+func last_absorb_amount() -> int:
+	var player_soak: int = _player_panel.debug_last_pulse_amount if _player_panel.debug_last_pulse_kind == &"guard" else 0
+	var enemy_soak: int = _enemy_panel.debug_last_pulse_amount if _enemy_panel.debug_last_pulse_kind == &"guard" else 0
+	return maxi(player_soak, enemy_soak)
+
 ## Which side the most recent fighter update hurt -- drives the portrait
 ## flash/shake. Mirrors last_damage_amount()'s larger-pulse-wins rule.
 func last_damage_side() -> StringName:

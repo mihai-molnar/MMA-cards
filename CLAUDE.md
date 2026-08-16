@@ -20,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `810 checks, 0 failures` / `PASS`.
+on a clean tree ends with `823 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -442,8 +442,9 @@ directory separate from `assets/icons/`, which stays reserved for status
 icons) and are registered by id in `SoundFx._STREAMS`: `punch` (three
 variations, picked at random per hit so a flurry doesn't machine-gun),
 `kick`, `card_fan` (fresh-hand deal only — a rebuild from playing a card
-stays silent), `click` (End Turn / Continue / Restart), and `slam` (the
-portrait clash at fight start). Per-sound gain and the hit pitch spread
+stays silent), `click` (End Turn / Continue / Restart), `slam` (the
+portrait clash at fight start), and `slap` (a hit fully absorbed by
+guard). Per-sound gain and the hit pitch spread
 live in `Juice` (`SFX_VOLUME_DB`, `SFX_PITCH_MIN/MAX`) with every other
 feel magnitude. Which hit sound an attack warrants is a pure static —
 `hit_sound_for_card` (kick tag → kick, other damage → punch, no damage →
@@ -451,9 +452,16 @@ silent) and `hit_sound_for_moves` (the enemy analogue, reading the coming
 turn's move labels before `end_turn()` resolves them) — and `BattleView`
 arms it in `_pending_hit_sound` exactly like `_pending_reaction_delay`,
 *binding* it into the deferred fighter update so the punch is heard when
-the hit visually lands and a racing later event cannot overwrite it. The
-sound only fires when the panels actually record damage, the same
-condition as hit-stop. `play()` records its decision (id and chosen
+the hit visually lands and a racing later event cannot overwrite it. At
+the landing moment a second pure static, `impact_sound(hit_sound,
+hp_damage, absorbed)`, decides what actually plays: hp damage keeps the
+attack's own sound, a hit guard soaked entirely becomes `slap` (read
+from `BattleHud.last_absorb_amount()`, the absorb mirror of
+`last_damage_amount()` — a suppressed guard expiry records kind "none"
+and can never slap), and an empty `hit_sound` stays silent no matter
+what the diff saw. A fully blocked hit gets the slap but none of the
+impact juice — hit-stop, shake and flash still require hp damage.
+`play()` records its decision (id and chosen
 variant) *before* the `is_inside_tree()` guard, per rule 3, so
 `test_sound_fx.gd` can assert it detached; an unknown id `push_error`s
 loudly, which the test wrapper turns into a failed run. Adding a sound is:
@@ -613,11 +621,12 @@ won during implementation and the spec was usually amended, but not always.
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
 fully art-directed down to the fight screen itself (portrait fight stage
 with a slam intro, icon readouts, outlined HUD text), sound effects on
-every battle beat (see "Sound" under Game feel), 810 headless checks.
+every battle beat (see "Sound" under Game feel), 823 headless checks.
 What is conspicuously still placeholder:
 
 - **No music, and the sound palette is minimal.** One click for all UI, no
-  whiff/guard sound for Block, no result-banner stinger, no crowd bed.
+  sound on playing Block itself (a fully blocked incoming hit does slap),
+  no result-banner stinger, no crowd bed.
 - **No map, no deck-building, no card rewards.** The run is a fixed two-fight
   sequence; `RunState.current_opponent()` is the seam a branching map would
   replace.
