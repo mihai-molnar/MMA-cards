@@ -11,6 +11,7 @@ var hand_view: HandView
 var status_tooltip: StatusTooltip
 var screen_fx: ScreenFx
 var sound_fx: SoundFx
+var pile_view: PileView
 
 ## Set by _on_card_chosen just before calling battle.play_card(), which emits
 ## fighters_changed synchronously -- so this is the only way _react_to_damage
@@ -56,6 +57,8 @@ func _start_fight() -> void:
 	hud.set_enemy_name(battle.enemy.display_name)
 	hand_view.clear()
 	status_tooltip.hide_tooltip()
+	# Silent: no click sound over the slam, and no stale pile over a new fight.
+	pile_view.dismiss()
 	hud.stage().set_portraits(&"player", opponent.id)
 	hud.stage().slam_in(_on_slam_impact, _on_slam_settled)
 
@@ -79,6 +82,7 @@ func _build_ui() -> void:
 	hud.continue_pressed.connect(_on_continue_pressed)
 	hud.status_hovered.connect(_on_status_hovered)
 	hud.end_turn_hovered.connect(_on_end_turn_hovered)
+	hud.pile_clicked.connect(_on_pile_clicked)
 	layer.add_child(hud)
 
 	hand_view = HandView.new()
@@ -90,6 +94,13 @@ func _build_ui() -> void:
 	# Its own z_index keeps it above hovered and lunging cards.
 	status_tooltip = StatusTooltip.new()
 	hud.add_child(status_tooltip)
+
+	# The pile browser overlay. Its PILE_Z covers the resting battle while
+	# staying under the tooltip, so grid-card keywords still explain.
+	pile_view = PileView.new()
+	pile_view.closed.connect(_on_pile_closed)
+	pile_view.card_hovered.connect(_on_pile_card_hovered)
+	hud.add_child(pile_view)
 
 	# Attacks fly at the enemy, Block pulls back to the player.
 	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
@@ -163,6 +174,40 @@ func _on_status_hovered(id: StringName, anchor: Vector2, hovered: bool) -> void:
 		status_tooltip.show_for_status(id, anchor)
 	else:
 		status_tooltip.hide_tooltip()
+
+## A pile icon: open the browser over the battle. Reads the pile at click
+## time -- the counts on the icons and the grid can never disagree.
+func _on_pile_clicked(pile: StringName) -> void:
+	sound_fx.play(&"click")
+	status_tooltip.hide_tooltip()
+	if pile == &"draw":
+		pile_view.open(battle.deck.draw_pile,
+			"DRAW PILE (%d)" % battle.deck.draw_pile.size())
+	else:
+		pile_view.open(battle.deck.discard_pile,
+			"DISCARDED (%d)" % battle.deck.discard_pile.size())
+
+func _on_pile_closed() -> void:
+	sound_fx.play(&"click")
+	status_tooltip.hide_tooltip()
+
+## Keyword tooltips on grid cards, exactly like the hand -- except the
+## anchor math accounts for the hover clamp (a top-row card shifts DOWN
+## into view when zoomed) and the tooltip flips below the card when the
+## zoomed top leaves it no room above.
+func _on_pile_card_hovered(view: CardView, hovered: bool) -> void:
+	if not hovered or view.card == null:
+		status_tooltip.hide_tooltip()
+		return
+	var hover_y: float = CardView.clamped_hover_y(view.rest_position.y - Juice.HOVER_LIFT)
+	var zoomed_top: float = hover_y + CardView.CARD_SIZE.y * (1.0 - Juice.HOVER_SCALE)
+	var centre_x: float = view.rest_position.x + CardView.CARD_SIZE.x / 2.0
+	if zoomed_top > 120.0:
+		status_tooltip.show_for_card(view.card, Vector2(centre_x, zoomed_top))
+	else:
+		# Below the zoomed card: its bottom stays pinned at the pivot.
+		var zoomed_bottom: float = hover_y + CardView.CARD_SIZE.y
+		status_tooltip.show_for_card(view.card, Vector2(centre_x, zoomed_bottom), true)
 
 ## The End Turn plate has no words on it; hovering it says what it does.
 func _on_end_turn_hovered(anchor: Vector2, hovered: bool) -> void:

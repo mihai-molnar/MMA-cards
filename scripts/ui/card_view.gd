@@ -31,10 +31,14 @@ const LUNGE_Z: int = 60
 
 var card: CardData
 
-## Where this card sits when not hovered. HandView sets these when it fans.
+## Where this card sits when not hovered. HandView sets these when it fans;
+## PileView additionally rests its grid cards below full size, so the rest
+## scale is part of the transform too (hover still zooms to the absolute
+## Juice.HOVER_SCALE either way).
 var rest_position: Vector2 = Vector2.ZERO
 var rest_rotation: float = 0.0
 var rest_z_index: int = 0
+var rest_scale: Vector2 = Vector2.ONE
 
 ## Where the current animation is heading. Tweens need real frames, which
 ## headless tests do not have, so tests assert these rather than the live
@@ -333,18 +337,20 @@ func _on_pressed() -> void:
 
 ## Called by HandView when it fans the hand. Snaps immediately unless the card
 ## is mid-hover, so a rebuild never yanks a lifted card out from under the cursor.
-func set_rest_transform(p_position: Vector2, p_rotation: float, p_z_index: int) -> void:
+func set_rest_transform(p_position: Vector2, p_rotation: float, p_z_index: int,
+		p_scale: float = 1.0) -> void:
 	rest_position = p_position
 	rest_rotation = p_rotation
 	rest_z_index = p_z_index
+	rest_scale = Vector2.ONE * p_scale
 	if _hovered:
 		return
 	target_position = p_position
 	target_rotation = p_rotation
-	target_scale = Vector2.ONE
+	target_scale = rest_scale
 	position = p_position
 	rotation = p_rotation
-	scale = Vector2.ONE
+	scale = rest_scale
 	z_index = p_z_index
 
 ## Named is_card_hovered() rather than is_hovered(): BaseButton (our ancestor)
@@ -367,11 +373,30 @@ func apply_hover(value: bool) -> void:
 	hover_changed.emit(self, value)
 	if value:
 		z_index = HOVER_Z
-		_animate_to(rest_position - Vector2(0.0, Juice.HOVER_LIFT), 0.0, Vector2.ONE * Juice.HOVER_SCALE)
+		var hover_position: Vector2 = rest_position - Vector2(0.0, Juice.HOVER_LIFT)
+		# A grid card (rest below full size) can sit high enough that its
+		# bottom-pivoted zoom would fly off the top of the screen; shift it
+		# down into view instead. Hand cards live at the bottom and never
+		# need this.
+		if rest_scale != Vector2.ONE:
+			hover_position.y = clamped_hover_y(hover_position.y)
+		_animate_to(hover_position, 0.0, Vector2.ONE * Juice.HOVER_SCALE)
 	else:
 		z_index = rest_z_index
-		_animate_to(rest_position, rest_rotation, Vector2.ONE)
+		_animate_to(rest_position, rest_rotation, rest_scale)
 	_update_idle()
+
+## How close to the screen top a zoomed card's edge may sit.
+const HOVER_TOP_MARGIN: float = 8.0
+
+## The zoomed card grows upward from its bottom-centre pivot; if the zoomed
+## top would poke past the margin, shift the hover target down just enough.
+## Pure and static so the pile grid's binding row is testable headless.
+static func clamped_hover_y(hover_y: float) -> float:
+	var zoomed_top: float = hover_y + CARD_SIZE.y * (1.0 - Juice.HOVER_SCALE)
+	if zoomed_top < HOVER_TOP_MARGIN:
+		return hover_y + (HOVER_TOP_MARGIN - zoomed_top)
+	return hover_y
 
 ## The played-card animation: a short backswing away from the target, then the
 ## strike. The card must already have been reparented out of HandView.
@@ -497,7 +522,7 @@ func _on_button_down() -> void:
 	var tween := create_tween()
 	tween.tween_property(self, "target_scale", Juice.SQUASH_SCALE, Juice.SQUASH_TIME)
 	tween.tween_property(self, "target_scale",
-		Vector2.ONE * Juice.HOVER_SCALE if _hovered else Vector2.ONE, Juice.SQUASH_TIME)
+		Vector2.ONE * Juice.HOVER_SCALE if _hovered else rest_scale, Juice.SQUASH_TIME)
 	_tween = tween
 
 func _on_mouse_entered() -> void:

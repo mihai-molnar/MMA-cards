@@ -18,6 +18,9 @@ signal status_hovered(id: StringName, anchor: Vector2, hovered: bool)
 ## The End Turn art carries no words; hovering the button reports here and
 ## BattleView answers with a label tooltip above it.
 signal end_turn_hovered(anchor: Vector2, hovered: bool)
+## A pile icon was clicked: &"draw" or &"discard". BattleView opens the
+## pile browser with the matching cards.
+signal pile_clicked(pile: StringName)
 
 ## Panels shrank and moved up to free vertical room for the larger card fan.
 ## (24, 56): a 24px margin from the left edge, mirrored by ENEMY_PANEL_AT's
@@ -61,9 +64,9 @@ const DISCARD_ICON_AT: Vector2 = Vector2(1079, 461)
 var _stage: FightStage
 var _turn_label: Label
 var _intent_label: Label
-var _draw_icon: TextureRect
+var _draw_button: TextureButton
 var _draw_value: Label
-var _discard_icon: TextureRect
+var _discard_button: TextureButton
 var _discard_value: Label
 var _end_turn_button: TextureButton
 var _player_panel: FighterPanel
@@ -129,9 +132,9 @@ func _build() -> void:
 	_ap_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HudText.style(_ap_value, 16)
 
-	_draw_icon = _make_ui_icon(&"cards", DRAW_ICON_AT, PILE_ICON_SIZE)
+	_draw_button = _make_pile_button(&"cards", DRAW_ICON_AT, &"draw")
 	_draw_value = _make_icon_value(DRAW_ICON_AT, PILE_ICON_SIZE)
-	_discard_icon = _make_ui_icon(&"discarded_cards", DISCARD_ICON_AT, PILE_ICON_SIZE)
+	_discard_button = _make_pile_button(&"discarded_cards", DISCARD_ICON_AT, &"discard")
 	_discard_value = _make_icon_value(DISCARD_ICON_AT, PILE_ICON_SIZE)
 
 	# The metal-plate art: rest texture normally, the recessed "clicked"
@@ -165,6 +168,23 @@ func _make_ui_icon(icon_name: StringName, at: Vector2, icon_size: float) -> Text
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(icon)
 	return icon
+
+## A pile icon that is also a button: pointer cursor on hover, and a click
+## reports which pile so BattleView can open the browser. The count label
+## is built separately AFTER the button (a later sibling, so it draws on
+## top) and stays mouse-transparent.
+func _make_pile_button(icon_name: StringName, at: Vector2, pile: StringName) -> TextureButton:
+	var button := TextureButton.new()
+	button.texture_normal = CardArt.ui_icon_for(icon_name)
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	button.position = at
+	button.size = Vector2.ONE * PILE_ICON_SIZE
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.pressed.connect(func() -> void: pile_clicked.emit(pile))
+	add_child(button)
+	return button
 
 ## A count centred in its icon, with the same optical downward nudge the
 ## other icon values use (glyphs have no descender, so true centring parks
@@ -246,6 +266,12 @@ func debug_discard_text() -> String:
 
 func debug_end_turn_button() -> TextureButton:
 	return _end_turn_button
+
+func debug_draw_button() -> TextureButton:
+	return _draw_button
+
+func debug_discard_button() -> TextureButton:
+	return _discard_button
 
 func update_fighters(battle: BattleState) -> void:
 	_player_panel.update(battle.player)

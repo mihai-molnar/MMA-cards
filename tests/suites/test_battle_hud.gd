@@ -13,6 +13,7 @@ func run(t: TestRunner) -> void:
 	_test_ap_routes_to_player_panel(t)
 	_test_status_hover_forwarded(t)
 	_test_pile_readouts_are_icon_counts(t)
+	_test_pile_icons_are_clickable(t)
 	_test_end_turn_button_texture_states(t)
 	_test_last_damage_side(t)
 	_test_last_absorb_amount(t)
@@ -98,6 +99,29 @@ func _test_pile_readouts_are_icon_counts(t: TestRunner) -> void:
 	t.check_eq(BattleHud.DISCARD_ICON_AT.x + BattleHud.PILE_ICON_SIZE,
 		BattleHud.END_TURN_AT.x + BattleHud.END_TURN_SIZE.x,
 		"the discard icon is right-aligned with the End Turn button")
+	hud.free()
+
+## The pile icons are buttons now: pointer cursor on hover, and a click
+## reports which pile so BattleView can open the browser view.
+func _test_pile_icons_are_clickable(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	var draw_button: TextureButton = hud.debug_draw_button()
+	var discard_button: TextureButton = hud.debug_discard_button()
+	t.check(draw_button != null and discard_button != null,
+		"both pile icons are TextureButtons")
+	if draw_button == null or discard_button == null:
+		hud.free()
+		return
+	for button: TextureButton in [draw_button, discard_button]:
+		t.check_eq(button.mouse_default_cursor_shape, Control.CURSOR_POINTING_HAND,
+			"a pile icon shows the pointer cursor on hover")
+		t.check_eq(button.focus_mode, Control.FOCUS_NONE, "no focus rectangle after a click")
+	var clicks: Array = []
+	hud.pile_clicked.connect(func(pile: StringName) -> void: clicks.append(pile))
+	draw_button.pressed.emit()
+	discard_button.pressed.emit()
+	t.check_eq(clicks, [&"draw", &"discard"],
+		"clicking each icon reports its own pile")
 	hud.free()
 
 ## The End Turn button wears the metal-plate art: normal texture at rest,

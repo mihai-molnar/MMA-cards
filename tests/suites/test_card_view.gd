@@ -14,6 +14,51 @@ func run(t: TestRunner) -> void:
 	_test_zones_are_laid_out_from_the_template(t)
 	_test_combo_armed_idempotent(t)
 	_test_no_focus_outline(t)
+	_test_rest_scale_round_trip(t)
+	_test_grid_hover_clamp(t)
+
+## PileView rests its grid cards below full size; set_rest_transform's
+## optional scale must survive a hover round-trip -- hover zooms to the
+## absolute hand-sized scale, unhover settles back to the REST scale, not
+## to full size.
+func _test_rest_scale_round_trip(t: TestRunner) -> void:
+	var view: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	view.set_rest_transform(Vector2(100, 100), 0.0, 3, 0.55)
+	t.check_eq(view.target_scale, Vector2.ONE * 0.55,
+		"a scaled rest transform lands on the rest scale")
+	view.apply_hover(true)
+	t.check_eq(view.target_scale, Vector2.ONE * Juice.HOVER_SCALE,
+		"hover zooms to the absolute hover scale regardless of rest scale")
+	view.apply_hover(false)
+	t.check_eq(view.target_scale, Vector2.ONE * 0.55,
+		"unhover returns to the rest scale")
+	view.set_rest_transform(Vector2(100, 100), 0.0, 3)
+	t.check_eq(view.target_scale, Vector2.ONE,
+		"the scale parameter defaults to full size for hand cards")
+	view.free()
+
+## A grid card zooms about its bottom-centre pivot, so a top-row card's
+## zoomed top would fly off the screen. clamped_hover_y shifts the hover
+## target down just enough to keep the zoomed card on-canvas; cards with
+## room are left exactly where the normal lift puts them.
+func _test_grid_hover_clamp(t: TestRunner) -> void:
+	# A top-row grid card: rest y around -43 after the pivot correction.
+	var top_row_y: float = CardView.clamped_hover_y(-43.0 - Juice.HOVER_LIFT)
+	var zoomed_top: float = top_row_y + CardView.CARD_SIZE.y * (1.0 - Juice.HOVER_SCALE)
+	t.check(absf(zoomed_top - CardView.HOVER_TOP_MARGIN) < 0.01,
+		"a clamped card's zoomed top lands exactly on the margin")
+	# A bottom-row card has room; the clamp must not touch it.
+	var low_y: float = 333.0 - Juice.HOVER_LIFT
+	t.check_eq(CardView.clamped_hover_y(low_y), low_y,
+		"a card with room above hovers exactly where the lift puts it")
+
+	# And apply_hover actually uses it for scaled (grid) cards.
+	var view: CardView = CardView.create(CardLibrary.load_card(&"jab"))
+	view.set_rest_transform(Vector2(100, -43.0), 0.0, 3, 0.55)
+	view.apply_hover(true)
+	t.check(view.target_position.y > -43.0,
+		"hovering a top-row grid card shifts it DOWN into view")
+	view.free()
 
 ## Clicking a Button grabs keyboard focus, and Godot draws its default white
 ## focus rectangle over the focused control -- flat = true hides the normal

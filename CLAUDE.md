@@ -20,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `860 checks, 0 failures` / `PASS`.
+on a clean tree ends with `923 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -396,6 +396,28 @@ decisions and `suppress_next_guard_pulse()` machinery survive unchanged
 Every label drawn over the portraits is styled by `HudText.style` (Kreon,
 white fill, black outline — the fighting-game legibility standard).
 
+**The pile browser.** The draw/discard icons are `TextureButton`s (pointer
+cursor); clicking one emits `BattleHud.pile_clicked` and `BattleView` opens
+`PileView` (`scripts/ui/pile_view.gd`): a modal full-rect overlay -- the
+dimmed octagon as backdrop, the pile's cards as real `CardView`s in a
+centred grid, and the close-button art (normal + clicked variants, the
+same native press swap as End Turn) top right. The grid sorts by display
+name ON PURPOSE: the draw pile's internal order is the upcoming draw
+order, and the view must show WHAT is left without revealing WHEN it
+comes. Grid cards rest at `CARD_REST_SCALE` via `set_rest_transform`'s
+optional scale (unhover returns to the REST scale; hover still zooms to
+the absolute hand-sized `Juice.HOVER_SCALE`, which is what keeps rules
+text readable). Two subtleties: a top-row card's bottom-pivoted zoom
+would fly off-screen, so `CardView.clamped_hover_y` shifts the hover
+target down into view (pure static, tested); and its keyword tooltip
+flips BELOW the zoomed card when the top leaves no room above
+(`show_for_card`'s `below` flag). Z-ordering is deliberate:
+`PileView.PILE_Z` is 10 so a hovered grid card lands at 10 + HOVER_Z(50)
+= 60, still under the tooltip's 70 -- raising PILE_Z above 20 silently
+puts hovered cards over their own tooltips. `close()` emits (BattleView
+plays the click and clears the tooltip); `dismiss()` is the silent
+variant for fight transitions, so no click plays over the slam.
+
 One Godot trap the stage taught: on a `TextureRect`, set `stretch_mode`/
 `expand_mode` BEFORE `position`/`size`. `Control.set_size()` clamps against
 `get_minimum_size()`, and the default `EXPAND_KEEP_SIZE` reports the source
@@ -646,7 +668,7 @@ won during implementation and the spec was usually amended, but not always.
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
 fully art-directed down to the fight screen itself (portrait fight stage
 with a slam intro, icon readouts, outlined HUD text), sound effects on
-every battle beat (see "Sound" under Game feel), 860 headless checks.
+every battle beat (see "Sound" under Game feel), 923 headless checks.
 What is conspicuously still placeholder:
 
 - **No music, and the sound palette is minimal.** One click for all UI, no

@@ -44,8 +44,9 @@ func _init() -> void:
 ## Shows the tooltip for `card` with its bottom edge ANCHOR_GAP above
 ## `anchor_top_centre` (the hovered card's top-centre), horizontally centred
 ## on it. A card naming no registered status hides the tooltip instead --
-## an empty explanation panel is worse than none.
-func show_for_card(card: CardData, anchor_top_centre: Vector2) -> void:
+## an empty explanation panel is worse than none. `below` flips it under
+## the anchor -- a top-row pile card has no room above its zoomed self.
+func show_for_card(card: CardData, anchor_top_centre: Vector2, below: bool = false) -> void:
 	var ids: Array[StringName] = CardTemplate.keywords_in(card)
 	if ids.is_empty():
 		hide_tooltip()
@@ -53,7 +54,10 @@ func show_for_card(card: CardData, anchor_top_centre: Vector2) -> void:
 	_populate(ids)
 	visible = true
 	reset_size()
-	position = anchor_top_centre - Vector2(size.x / 2.0, size.y + ANCHOR_GAP)
+	if below:
+		position = anchor_top_centre + Vector2(-size.x / 2.0, ANCHOR_GAP)
+	else:
+		position = anchor_top_centre - Vector2(size.x / 2.0, size.y + ANCHOR_GAP)
 	_clamp_to_viewport()
 
 ## The chip variant: one status, hanging BELOW its anchor (the chip's

@@ -8,6 +8,19 @@ func run(t: TestRunner) -> void:
 	_test_tooltip_hides_for_plain_cards(t)
 	_test_tooltip_for_single_status(t)
 	_test_label_tooltip(t)
+	_test_card_tooltip_can_hang_below(t)
+
+## A top-row pile card has no room above its zoomed self, so BattleView can
+## ask for the card tooltip below the anchor instead -- same content, other
+## side.
+func _test_card_tooltip_can_hang_below(t: TestRunner) -> void:
+	var tip := StatusTooltip.new()
+	tip.show_for_card(CardLibrary.load_card(&"low_kick"), Vector2(400.0, 420.0), true)
+	t.check(tip.visible, "the below-anchor variant still shows")
+	t.check(tip.position.y >= 420.0, "it hangs below the anchor when asked")
+	t.check(absf(tip.position.x + tip.size.x / 2.0 - 400.0) < 1.0,
+		"still centred on the anchor")
+	tip.free()
 
 ## Combo has no status behind it -- the tooltip explains game-rule keywords
 ## too, with the ratio pulled from config via ComboRule.
