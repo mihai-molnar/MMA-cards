@@ -10,6 +10,7 @@ var hud: BattleHud
 var hand_view: HandView
 var status_tooltip: StatusTooltip
 var screen_fx: ScreenFx
+var sound_fx: SoundFx
 
 ## Set by _on_card_chosen just before calling battle.play_card(), which emits
 ## fighters_changed synchronously -- so this is the only way _react_to_damage
@@ -18,6 +19,15 @@ var screen_fx: ScreenFx
 ## that call; cleared back to 0.0 right after, so enemy turns (which never
 ## touch this) always react immediately.
 var _pending_reaction_delay: float = 0.0
+
+## The hit sound the in-flight attack warrants, armed the same way and for
+## the same reason as _pending_reaction_delay: fighters_changed fires
+## synchronously from inside play_card()/end_turn(), so the sound choice
+## must be decided before the call and captured per-event -- the deferred
+## fighter update binds it, so a racing second event cannot overwrite an
+## in-flight one. Empty for every fighters_changed that is not an attack
+## resolving (guard expiry, buffs), which therefore stays silent.
+var _pending_hit_sound: StringName = &""
 
 ## Set by _on_turn_started, which BattleState always emits immediately before
 ## hand_changed when a genuinely new hand is drawn (see _begin_player_turn).
@@ -54,6 +64,7 @@ func _on_slam_impact() -> void:
 	screen_fx.hit_stop(Juice.SLAM_HIT_STOP)
 	screen_fx.shake(Juice.SLAM_SHAKE_AMPLITUDE)
 	screen_fx.flash()
+	sound_fx.play(&"slam")
 
 func _on_slam_settled() -> void:
 	battle.start()
@@ -83,6 +94,8 @@ func _build_ui() -> void:
 
 	screen_fx = ScreenFx.new()
 	add_child(screen_fx)
+	sound_fx = SoundFx.new()
+	add_child(sound_fx)
 	# The CanvasLayer is what shake offsets; the HUD is a Control, so the
 	# full-screen flash can anchor to it.
 	screen_fx.bind(layer, hud)
@@ -119,6 +132,10 @@ func _on_hand_changed() -> void:
 	# hover-off signal dies with it, so the tooltip must be dismissed here.
 	status_tooltip.hide_tooltip()
 	hand_view.rebuild(battle, deal)
+	# Only a genuinely fresh hand fans in; playing or discarding a card
+	# rebuilds too and must stay silent.
+	if deal:
+		sound_fx.play(&"card_fan")
 
 ## Shows the status tooltip above the hovered card when its text names a
 ## registered status (StatusTooltip itself hides for cards that name none).
@@ -149,10 +166,14 @@ func _on_card_hovered(view: CardView, hovered: bool) -> void:
 func _on_fighters_changed() -> void:
 	hand_view.refresh_states(battle)
 	var delay: float = _pending_reaction_delay
+	# Bound rather than re-read at fire time: the sound belongs to the attack
+	# that caused THIS update, not to whatever is pending when the timer fires.
+	var hit_sound: StringName = _pending_hit_sound
 	if delay > 0.0 and is_inside_tree():
-		get_tree().create_timer(delay).timeout.connect(_land_fighter_update)
+		get_tree().create_timer(delay).timeout.connect(
+			_land_fighter_update.bind(hit_sound))
 	else:
-		_land_fighter_update()
+		_land_fighter_update(hit_sound)
 
 ## The telegraph obeys the same rule as the fighter panels above: the model
 ## re-emits intent synchronously from inside play_card(), while the card is
@@ -178,11 +199,13 @@ func _land_intent_update() -> void:
 ## whole-view impact can be driven from that without BattleState needing a
 ## payload. Safe to run late or twice: a second update with nothing new to
 ## diff records "none" and last_damage_amount() returns 0.
-func _land_fighter_update() -> void:
+func _land_fighter_update(hit_sound: StringName = &"") -> void:
 	hud.update_fighters(battle)
 	var amount: int = hud.last_damage_amount()
 	if amount > 0:
 		_fire_impact(amount)
+		if hit_sound != &"":
+			sound_fx.play(hit_sound)
 		var side: StringName = hud.last_damage_side()
 		hud.stage().flash_hit(side)
 		hud.stage().shake(side, Juice.portrait_shake_amplitude(amount))
@@ -199,19 +222,28 @@ func _on_card_chosen(index: int) -> void:
 	# call returns, so the delay for _on_fighters_changed must be armed before
 	# calling it -- there is no "after the fact" hook to detect a played card
 	# from inside the signal handler.
+	var card: CardData = battle.deck.hand[index] \
+		if index >= 0 and index < battle.deck.hand.size() else null
+	_pending_hit_sound = SoundFx.hit_sound_for_card(card)
 	_pending_reaction_delay = Juice.play_impact_delay()
 	var played: bool = battle.play_card(index)
 	_pending_reaction_delay = 0.0
+	_pending_hit_sound = &""
 	# The card only departs the hand once BattleState confirms the play; a
 	# rejected play must leave HandView untouched (see HandView.launch_play).
 	if played:
 		hand_view.launch_play(index)
 
 func _on_end_turn_pressed() -> void:
+	sound_fx.play(&"click")
 	# Enemy turn start clears the enemy's guard by expiry, inside end_turn().
 	# Suppress before calling it so that expiry doesn't read as an absorb.
 	hud.suppress_enemy_guard_pulse()
+	# The enemy attack has no card animation and lands immediately, so its
+	# hit sound is decided from the coming turn's moves before they resolve.
+	_pending_hit_sound = SoundFx.hit_sound_for_moves(battle.brain.current_moves())
 	battle.end_turn()
+	_pending_hit_sound = &""
 
 ## The banner waits for the killing blow to land (plus a beat) when the win
 ## came from a played card -- battle_over is emitted synchronously from
@@ -243,6 +275,7 @@ func _show_result(player_won: bool) -> void:
 
 ## CONTINUE: the next fight of the same run, carried hp and all.
 func _on_continue_pressed() -> void:
+	sound_fx.play(&"click")
 	hud.hide_result()
 	_suppress_transition_guard_pulses()
 	_start_fight()
@@ -250,6 +283,7 @@ func _on_continue_pressed() -> void:
 ## RESTART: the whole run from fight 1 at full hp -- a loss and a completed
 ## run both land here.
 func _on_restart_pressed() -> void:
+	sound_fx.play(&"click")
 	hud.hide_result()
 	_suppress_transition_guard_pulses()
 	run.reset()

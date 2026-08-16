@@ -200,6 +200,21 @@ const SLAM_RECOIL_TIME: float = 0.16
 const SLAM_SHAKE_AMPLITUDE: float = 18.0
 const SLAM_HIT_STOP: float = 0.10
 
+# --- Sound ----------------------------------------------------------------
+## Impact sounds get a small random pitch spread so repeats read as fresh
+## hits; UI sounds play at 1.0 (SoundFx._PITCH_VARIED picks which is which).
+const SFX_PITCH_MIN: float = 0.94
+const SFX_PITCH_MAX: float = 1.06
+## Per-sound gain, tuned by ear like everything else here: hits carry the
+## mix, the fan and clicks sit under them.
+const SFX_VOLUME_DB: Dictionary = {
+	&"punch": 0.0,
+	&"kick": 0.0,
+	&"card_fan": -6.0,
+	&"click": -8.0,
+	&"slam": 0.0,
+}
+
 # --- Portrait hit feedback ------------------------------------------------
 const PORTRAIT_FLASH_TIME: float = 0.14
 const PORTRAIT_FLASH_COLOR: Color = Color(1.0, 0.45, 0.45, 0.35)
