@@ -37,6 +37,8 @@ func _test_status_icons_load(t: TestRunner) -> void:
 		"strength has an icon now -- the chip area shows it")
 	t.check(CardArt.status_icon_for(&"no_such_status") == null,
 		"a status without an icon resolves to null quietly")
+	t.check(CardArt.status_icon_for(&"guard") != null,
+		"the guard readout icon lives in the same directory, keyed as guard")
 
 func _test_missing_illustration_returns_null(t: TestRunner) -> void:
 	# A card authored before its art exists is a legitimate state -- it renders

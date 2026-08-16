@@ -81,6 +81,7 @@ func _build_ui() -> void:
 	hud.restart_pressed.connect(_on_restart_pressed)
 	hud.continue_pressed.connect(_on_continue_pressed)
 	hud.status_hovered.connect(_on_status_hovered)
+	hud.guard_hovered.connect(_on_guard_hovered)
 	hud.end_turn_hovered.connect(_on_end_turn_hovered)
 	hud.pile_clicked.connect(_on_pile_clicked)
 	layer.add_child(hud)
@@ -208,6 +209,15 @@ func _on_pile_card_hovered(view: CardView, hovered: bool) -> void:
 		# Below the zoomed card: its bottom stays pinned at the pivot.
 		var zoomed_bottom: float = hover_y + CardView.CARD_SIZE.y
 		status_tooltip.show_for_card(view.card, Vector2(centre_x, zoomed_bottom), true)
+
+## The guard chip: guard is a rule, not a status, so its tooltip body comes
+## from Fighter rather than the registry -- same panel, same below-the-chip
+## placement.
+func _on_guard_hovered(anchor: Vector2, hovered: bool) -> void:
+	if hovered:
+		status_tooltip.show_info("Guard", Fighter.guard_description(), anchor)
+	else:
+		status_tooltip.hide_tooltip()
 
 ## The End Turn plate has no words on it; hovering it says what it does.
 func _on_end_turn_hovered(anchor: Vector2, hovered: bool) -> void:

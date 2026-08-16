@@ -7,6 +7,15 @@ func run(t: TestRunner) -> void:
 	_test_guard(t)
 	_test_hp_loss(t)
 	_test_reset(t)
+	_test_guard_description(t)
+
+## The guard chip's tooltip body lives in core beside the rule it
+## describes, like every status description.
+func _test_guard_description(t: TestRunner) -> void:
+	t.check(Fighter.guard_description().length() > 0,
+		"guard has a player-facing description")
+	t.check(Fighter.guard_description().contains("turn"),
+		"the description states the expiry rule -- guard's whole subtlety")
 
 func _test_initial_state(t: TestRunner) -> void:
 	var f := Fighter.new("Player", BattleConfig.PLAYER_MAX_HP)

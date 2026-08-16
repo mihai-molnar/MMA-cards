@@ -20,7 +20,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `923 checks, 0 failures` / `PASS`.
+on a clean tree ends with `942 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -366,17 +366,26 @@ beyond that one deferred `start()`), and per-side hit feedback
 `player`, an opponent's id is its `OpponentData.id`, so a new opponent's
 portrait is one file). HP/AP icon frames, the draw/discard pile icons and
 the End Turn button plates are HUD chrome in `assets/ui/`,
-NOT `assets/icons/` (that directory stays reserved for status icons keyed
-by status id). `FighterPanel` no longer draws a rectangle: its face is the
+NOT `assets/icons/` (that directory holds the status icons keyed by status
+id, plus one non-status resident: `guard.png`, the guard chip's icon).
+`FighterPanel` no longer draws a rectangle: its face is the
 HP heart (value inside; centred until too wide, then anchored at the icon's
-centre growing rightward), a blue `+n` guard readout, and the status chip
-area beneath them (dark bordered badges, one per active status — the chip
+centre growing rightward), the guard chip beneath it (the guard icon plus
+the blue `+n`, blue-bordered, persistent — built once and toggled by
+visibility, so a hover is never interrupted), and the status chip
+area under that (dark bordered badges, one per active status — the chip
 ground is what makes the icons read against the bright portraits). Chips
 observe the mouse (`MOUSE_FILTER_STOP` on the chip, IGNORE everywhere
-else in the panel) and emit `status_hovered(id, anchor, hovered)`;
+else in the panel) and emit `status_hovered(id, anchor, hovered)` — the
+guard chip its own `guard_hovered(anchor, hovered)`, because guard is a
+rule, not a registry status: its tooltip body is
+`Fighter.guard_description()` (kept in core beside the rule, like every
+status description) shown via `StatusTooltip.show_info`.
 `BattleHud` forwards both panels' signals and `BattleView` answers with
-`StatusTooltip.show_for_status`, which hangs BELOW the chip — above it
-would cover the hp readout it sits under. A no-op update skips the chip
+`StatusTooltip.show_for_status` / `show_info`, hanging BELOW the chip —
+above it would cover the hp readout it sits under. The guard number is
+tinted via its theme `font_color`, NOT modulate — `_punch` tweens
+modulate back to WHITE, which would bleach a modulate tint. A no-op update skips the chip
 rebuild so a hovered chip is never freed under the cursor. The AP bolt is
 no longer in the panel at all: it is HUD chrome at the bottom-left corner
 (`BattleHud.AP_ICON_AT`, heart-sized so it reads at a glance, above the
@@ -668,7 +677,7 @@ won during implementation and the spec was usually amended, but not always.
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
 fully art-directed down to the fight screen itself (portrait fight stage
 with a slam intro, icon readouts, outlined HUD text), sound effects on
-every battle beat (see "Sound" under Game feel), 923 headless checks.
+every battle beat (see "Sound" under Game feel), 942 headless checks.
 What is conspicuously still placeholder:
 
 - **No music, and the sound palette is minimal.** One click for all UI, no

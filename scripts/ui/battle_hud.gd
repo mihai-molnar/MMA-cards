@@ -18,6 +18,8 @@ signal status_hovered(id: StringName, anchor: Vector2, hovered: bool)
 ## The End Turn art carries no words; hovering the button reports here and
 ## BattleView answers with a label tooltip above it.
 signal end_turn_hovered(anchor: Vector2, hovered: bool)
+## Forwarded from both FighterPanels, like status_hovered.
+signal guard_hovered(anchor: Vector2, hovered: bool)
 ## A pile icon was clicked: &"draw" or &"discard". BattleView opens the
 ## pile browser with the matching cards.
 signal pile_clicked(pile: StringName)
@@ -105,11 +107,13 @@ func _build() -> void:
 	_player_panel = FighterPanel.create("Player", false)
 	_player_panel.position = PLAYER_PANEL_AT
 	_player_panel.status_hovered.connect(status_hovered.emit)
+	_player_panel.guard_hovered.connect(guard_hovered.emit)
 	add_child(_player_panel)
 
 	_enemy_panel = FighterPanel.create("Enemy", true)
 	_enemy_panel.position = ENEMY_PANEL_AT
 	_enemy_panel.status_hovered.connect(status_hovered.emit)
+	_enemy_panel.guard_hovered.connect(guard_hovered.emit)
 	add_child(_enemy_panel)
 
 	# Bottom-left corner stack: the AP bolt above the draw-pile label. The

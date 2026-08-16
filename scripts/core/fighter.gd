@@ -36,6 +36,11 @@ func apply_hp_loss(amount: int) -> int:
 	hp -= loss
 	return loss
 
+## The guard chip tooltip's body -- kept here, beside the rule it
+## describes, exactly as each status keeps its description in core.
+static func guard_description() -> String:
+	return "Absorbs incoming damage before HP is lost. Expires at the start of its owner's turn."
+
 func expire_guard() -> void:
 	guard = 0
 

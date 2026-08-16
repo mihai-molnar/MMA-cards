@@ -6,6 +6,7 @@ func run(t: TestRunner) -> void:
 	_test_initial_display(t)
 	_test_status_chips_show_registry_numbers(t)
 	_test_chip_hover_emits_status_hovered(t)
+	_test_guard_chip(t)
 	_test_damage_pulse(t)
 	_test_guard_pulse(t)
 	_test_no_pulse_cases(t)
@@ -90,6 +91,49 @@ func _test_chip_hover_emits_status_hovered(t: TestRunner) -> void:
 		var anchor: Vector2 = events[0][1]
 		t.check(anchor.y >= panel.position.y,
 			"the anchor is in the panel's PARENT space -- offset by the panel position")
+	panel.free()
+
+## Guard renders as a chip now -- the icon beside the blue +n -- hidden
+## while the fighter holds none, and hover reports outward for the tooltip
+## exactly like a status chip (guard is NOT a status, so it has its own
+## signal rather than a registry id).
+func _test_guard_chip(t: TestRunner) -> void:
+	var panel: FighterPanel = FighterPanel.create("Player", false)
+	panel.position = Vector2(24, 56)
+	var fighter := Fighter.new("Player", 50)
+	panel.update(fighter)
+	t.check(not panel.debug_guard_chip().visible,
+		"no guard, no chip")
+
+	fighter.add_guard(8)
+	panel.update(fighter)
+	t.check(panel.debug_guard_chip().visible, "gaining guard shows the chip")
+	t.check_eq(panel.debug_guard_text(), "+8", "the chip carries the block number")
+
+	fighter.absorb_into_guard(3)
+	panel.update(fighter)
+	t.check_eq(panel.debug_guard_text(), "+5", "the number tracks the remaining guard")
+
+	var chip: Control = panel.debug_guard_chip()
+	t.check(chip.mouse_filter != Control.MOUSE_FILTER_IGNORE,
+		"the guard chip observes the mouse, or the tooltip can never fire")
+	var events: Array = []
+	panel.guard_hovered.connect(
+		func(anchor: Vector2, hovered: bool) -> void:
+			events.append([anchor, hovered]))
+	chip.mouse_entered.emit()
+	chip.mouse_exited.emit()
+	t.check_eq(events.size(), 2, "enter and exit both report")
+	if events.size() == 2:
+		t.check_eq(events[0][1], true, "entering reports hovered")
+		t.check_eq(events[1][1], false, "exiting reports unhovered")
+		t.check((events[0][0] as Vector2).y >= panel.position.y,
+			"the anchor is in the panel's parent space")
+
+	fighter.expire_guard()
+	panel.suppress_next_guard_pulse()
+	panel.update(fighter)
+	t.check(not panel.debug_guard_chip().visible, "expired guard hides the chip")
 	panel.free()
 
 func _test_damage_pulse(t: TestRunner) -> void:

@@ -14,10 +14,11 @@ const ICON_SIZE: float = 72.0
 const STATUS_ICON_SIZE: float = 28.0
 const STATUS_ICON_GAP: float = 4.0
 
-## The chip row sits directly under the heart (0-72) and the guard readout
-## (74-94) -- the space the AP bolt vacated when it moved to the HUD's
-## bottom-left corner.
-const STATUS_ROW_Y: float = 98.0
+## The guard chip sits directly under the heart (0-72); the status chip
+## row under that -- the space the AP bolt vacated when it moved to the
+## HUD's bottom-left corner.
+const GUARD_ROW_Y: float = 74.0
+const STATUS_ROW_Y: float = 116.0
 const STATUS_CHIP_GAP: float = 6.0
 const STATUS_CHIP_PAD: float = 3.0
 ## Same dark ground as StatusTooltip's panel: the chip's job is to make the
@@ -40,6 +41,9 @@ const VALUE_WINDOW_FRACTION: float = 0.75
 ## and the chip's bottom-centre in the panel's parent space -- the anchor a
 ## tooltip hangs below.
 signal status_hovered(id: StringName, anchor: Vector2, hovered: bool)
+## The guard chip's hover. Guard is NOT a status (no registry id), so it
+## reports on its own signal and BattleView shows an info tooltip.
+signal guard_hovered(anchor: Vector2, hovered: bool)
 
 var align_right: bool = false
 
@@ -61,7 +65,12 @@ var _fighter_name: String = ""
 var _icon_cluster: Control
 var _hp_icon: TextureRect
 var _hp_value: Label
-var _guard_label: Label
+## Guard renders as a chip like the statuses -- icon plus the blue +n --
+## but persistent: built once, toggled by visibility, so a hover can never
+## be interrupted by an update that changed nothing.
+var _guard_row: HBoxContainer
+var _guard_chip: PanelContainer
+var _guard_value: Label
 ## The cluster's rest position -- what every shake returns to.
 var _cluster_home: Vector2 = Vector2.ZERO
 var _cluster_tween: Tween
@@ -114,27 +123,38 @@ func _build() -> void:
 	_hp_value.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_icon_cluster.add_child(_hp_value)
 
-	_guard_label = Label.new()
-	HudText.style(_guard_label, 14)
-	_guard_label.add_theme_color_override("font_color", GUARD_FLASH)
-	_guard_label.position = Vector2(icon_x, 74.0)
-	_guard_label.size = Vector2(ICON_SIZE, 20.0)
-	_guard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_guard_label.visible = false
-	_guard_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_icon_cluster.add_child(_guard_label)
+	_guard_row = _make_chip_row(GUARD_ROW_Y)
+	_guard_chip = _make_chip(GUARD_FLASH)
+	_guard_chip.visible = false
+	_guard_chip.mouse_entered.connect(_on_guard_hover.bind(true))
+	_guard_chip.mouse_exited.connect(_on_guard_hover.bind(false))
+	var guard_box: HBoxContainer = _guard_chip.get_child(0)
+	guard_box.add_child(_make_chip_icon(CardArt.status_icon_for(&"guard")))
+	_guard_value = Label.new()
+	HudText.style(_guard_value, 14)
+	# Tinted via the theme colour, NOT modulate: _punch tweens modulate and
+	# always lands back on WHITE, which would bleach a modulate tint.
+	_guard_value.add_theme_color_override("font_color", GUARD_FLASH)
+	_guard_value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_guard_value.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	guard_box.add_child(_guard_value)
+	_guard_row.add_child(_guard_chip)
 
-	_status_row = HBoxContainer.new()
-	_status_row.add_theme_constant_override("separation", int(STATUS_CHIP_GAP))
-	_status_row.position = Vector2(0.0, STATUS_ROW_Y)
-	_status_row.size = Vector2(PANEL_SIZE.x, STATUS_ICON_SIZE + 2.0 * STATUS_CHIP_PAD)
-	_status_row.alignment = BoxContainer.ALIGNMENT_END if align_right \
+	_status_row = _make_chip_row(STATUS_ROW_Y)
+
+## A side-aligned row the chips flow in. IGNORE on the row, STOP on each
+## chip: the row must not swallow clicks over the whole panel width, but
+## the chips themselves observe the mouse for the tooltip.
+func _make_chip_row(y: float) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(STATUS_CHIP_GAP))
+	row.position = Vector2(0.0, y)
+	row.size = Vector2(PANEL_SIZE.x, STATUS_ICON_SIZE + 2.0 * STATUS_CHIP_PAD)
+	row.alignment = BoxContainer.ALIGNMENT_END if align_right \
 		else BoxContainer.ALIGNMENT_BEGIN
-	# IGNORE on the row, STOP on each chip: the row must not swallow clicks
-	# over the whole panel width, but the chips themselves observe the mouse
-	# for the tooltip.
-	_status_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_icon_cluster.add_child(_status_row)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_cluster.add_child(row)
+	return row
 
 func _make_icon(icon_name: StringName, at: Vector2, icon_size: float) -> TextureRect:
 	var icon := TextureRect.new()
@@ -159,8 +179,8 @@ func _make_icon(icon_name: StringName, at: Vector2, icon_size: float) -> Texture
 func update(fighter: Fighter) -> void:
 	_hp_value.text = "%d / %d" % [fighter.hp, fighter.max_hp]
 	_layout_value_label(_hp_value, _hp_icon.position.x, ICON_SIZE)
-	_guard_label.text = "+%d" % fighter.guard
-	_guard_label.visible = fighter.guard > 0
+	_guard_value.text = "+%d" % fighter.guard
+	_guard_chip.visible = fighter.guard > 0
 	_rebuild_status_chips(fighter)
 
 	var kind: StringName = &"none"
@@ -221,36 +241,46 @@ func _rebuild_status_chips(fighter: Fighter) -> void:
 	for entry: Array in entries:
 		_status_row.add_child(_make_status_chip(entry[0], entry[1]))
 
-## A dark badge that makes the status stand out against the portrait: icon
-## (or the registry's short name while a status has no icon asset yet) plus
-## its number, bordered in the status yellow.
-func _make_status_chip(id: StringName, value: int) -> Control:
+## The chip shell shared by the status chips and the guard chip: dark
+## ground (what makes the icon stand out against the portrait), bordered
+## in the readout's colour, an HBox inside for icon + number.
+func _make_chip(border_color: Color) -> PanelContainer:
 	var chip := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = STATUS_CHIP_BG
-	style.border_color = STATUS_COLOR
+	style.border_color = border_color
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(4)
 	style.set_content_margin_all(STATUS_CHIP_PAD)
 	chip.add_theme_stylebox_override("panel", style)
 	chip.mouse_filter = Control.MOUSE_FILTER_STOP
-	chip.mouse_entered.connect(_on_chip_hover.bind(id, chip, true))
-	chip.mouse_exited.connect(_on_chip_hover.bind(id, chip, false))
 
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", int(STATUS_ICON_GAP))
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chip.add_child(box)
+	return chip
+
+func _make_chip_icon(texture: Texture2D) -> TextureRect:
+	var image := TextureRect.new()
+	image.texture = texture
+	image.custom_minimum_size = Vector2.ONE * STATUS_ICON_SIZE
+	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return image
+
+## A status chip: icon (or the registry's short name while a status has no
+## icon asset yet) plus its number, bordered in the status yellow.
+func _make_status_chip(id: StringName, value: int) -> Control:
+	var chip := _make_chip(STATUS_COLOR)
+	chip.mouse_entered.connect(_on_chip_hover.bind(id, chip, true))
+	chip.mouse_exited.connect(_on_chip_hover.bind(id, chip, false))
+	var box: HBoxContainer = chip.get_child(0)
 
 	var icon: Texture2D = CardArt.status_icon_for(id)
 	if icon != null:
-		var image := TextureRect.new()
-		image.texture = icon
-		image.custom_minimum_size = Vector2.ONE * STATUS_ICON_SIZE
-		image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		image.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		box.add_child(image)
+		box.add_child(_make_chip_icon(icon))
 	else:
 		var name_label := Label.new()
 		name_label.text = StatusRegistry.display_name(id)
@@ -278,6 +308,19 @@ func _on_chip_hover(id: StringName, chip: Control, hovered: bool) -> void:
 		+ chip.position + Vector2(chip.size.x / 2.0, chip.size.y)
 	status_hovered.emit(id, anchor, hovered)
 
+## Mirrors _on_chip_hover for the guard chip: bottom-centre anchor in the
+## panel's parent space, from rest geometry.
+func _on_guard_hover(hovered: bool) -> void:
+	var anchor: Vector2 = position + _cluster_home + _guard_row.position \
+		+ _guard_chip.position + Vector2(_guard_chip.size.x / 2.0, _guard_chip.size.y)
+	guard_hovered.emit(anchor, hovered)
+
+func debug_guard_chip() -> Control:
+	return _guard_chip
+
+func debug_guard_text() -> String:
+	return _guard_value.text
+
 func debug_status_chips() -> Array:
 	return _status_chip_entries
 
@@ -302,7 +345,7 @@ func _pulse_guard(amount: int) -> void:
 	if not is_inside_tree():
 		return
 	# The guard readout is the thing that just worked, so it is what punches.
-	_punch(_guard_label, GUARD_FLASH)
+	_punch(_guard_value, GUARD_FLASH)
 	_float_number("-%d guard" % amount, GUARD_FLASH)
 
 func _punch(label: Label, flash: Color) -> void:

@@ -9,6 +9,21 @@ func run(t: TestRunner) -> void:
 	_test_tooltip_for_single_status(t)
 	_test_label_tooltip(t)
 	_test_card_tooltip_can_hang_below(t)
+	_test_info_tooltip(t)
+
+## Guard is not a status, so its chip tooltip carries a caller-supplied
+## title and body -- same panel, same below-the-chip placement.
+func _test_info_tooltip(t: TestRunner) -> void:
+	var tip := StatusTooltip.new()
+	tip.show_info("Guard", Fighter.guard_description(), Vector2(200.0, 130.0))
+	t.check(tip.visible, "an info tooltip shows")
+	t.check(tip.debug_text().contains("Guard"), "it carries the title")
+	t.check(tip.debug_text().contains(Fighter.guard_description()),
+		"it carries the body")
+	t.check(tip.position.y >= 130.0, "it hangs below the chip anchor")
+	t.check(absf(tip.position.x + tip.size.x / 2.0 - 200.0) < 1.0,
+		"it is centred on the anchor")
+	tip.free()
 
 ## A top-row pile card has no room above its zoomed self, so BattleView can
 ## ask for the card tooltip below the anchor instead -- same content, other

@@ -12,6 +12,7 @@ func run(t: TestRunner) -> void:
 	_test_lunge_anchors_are_portrait_centres(t)
 	_test_ap_routes_to_player_panel(t)
 	_test_status_hover_forwarded(t)
+	_test_guard_hover_forwarded(t)
 	_test_pile_readouts_are_icon_counts(t)
 	_test_pile_icons_are_clickable(t)
 	_test_end_turn_button_texture_states(t)
@@ -79,6 +80,20 @@ func _test_ap_routes_to_player_panel(t: TestRunner) -> void:
 		"the AP bolt is as large as the HP hearts -- it must read at a glance")
 	t.check(BattleHud.AP_ICON_AT.y + BattleHud.AP_ICON_SIZE <= BattleHud.DRAW_ICON_AT.y,
 		"the AP bolt sits above the draw-pile icon, not on it")
+	hud.free()
+
+func _test_guard_hover_forwarded(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	var battle := BattleState.new(12345)
+	battle.start()
+	battle.player.add_guard(6)
+	hud.update_fighters(battle)
+	var events: Array = []
+	hud.guard_hovered.connect(
+		func(_anchor: Vector2, hovered: bool) -> void:
+			events.append(hovered))
+	hud.debug_player_panel().debug_guard_chip().mouse_entered.emit()
+	t.check_eq(events, [true], "the HUD forwards its panels' guard-chip hovers")
 	hud.free()
 
 ## The pile counts are numbers centred in their icons now -- the "draw n"
