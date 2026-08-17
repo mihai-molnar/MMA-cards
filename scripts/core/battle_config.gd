@@ -31,6 +31,17 @@ const LEG_INJURY_TURNS: int = 1
 ## weight on the leg.
 const LEG_INJURY_DAMAGE_MULT: float = 0.5
 
+## Reward cards: offered by the rewards screen after a won fight, never in
+## the starting deck. Baked into resources/cards/*.tres like every per-card
+## constant above -- re-run tools/generate_cards.gd after editing.
+const ONE_TWO_COST: int = 1
+## Per hit: the base jab-cross, and the bonus cross again if the first hit
+## breaks the target's guard.
+const ONE_TWO_DAMAGE: int = 5
+const STRENGTH_UP_COST: int = 0
+const STRENGTH_UP_STACKS: int = 2
+const PREPARED_COST: int = 1
+## Both the immediate grant and the delayed one.
 const PREPARED_GUARD: int = 4
 ## Lifecycle ceiling for the Prepared status: applied mid-turn, it must
 ## survive its owner's turn-end tick (2 -> 1) to still be alive at the next
@@ -58,6 +69,11 @@ const KICKBOXER_BUFF_DURATION: int = 2
 ## The run: opponent ids fought in order. A future map replaces how the
 ## next id is chosen (see RunState); this array is the linear placeholder.
 const RUN_OPPONENTS: Array[StringName] = [&"brawler", &"kickboxer"]
+
+## The rewards screen's pool, in display order. Live-read like RUN_OPPONENTS
+## -- no regen step. Today the whole pool is offered every time; a random
+## draw from a larger pool later changes RewardPool, not this list's readers.
+const REWARD_CARDS: Array[StringName] = [&"one_two", &"strength_up", &"prepared"]
 
 ## Combo bonus = floori(sum_of_base_damage * COMBO_BONUS_RATIO)
 const COMBO_BONUS_RATIO: float = 0.5

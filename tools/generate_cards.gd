@@ -21,8 +21,11 @@ func _initialize() -> void:
 	_save(_make_straight())
 	_save(_make_block())
 	_save(_make_low_kick())
+	_save(_make_one_two())
+	_save(_make_strength_up())
+	_save(_make_prepared())
 
-	print("Generated 4 card resources in %s" % OUTPUT_DIR)
+	print("Generated 7 card resources in %s" % OUTPUT_DIR)
 	quit(0)
 
 func _save(card: CardData) -> void:
@@ -100,4 +103,63 @@ func _make_block() -> CardData:
 	var guard := GuardEffect.new()
 	guard.amount = BattleConfig.BLOCK_GUARD
 	card.effects = [guard] as Array[CardEffect]
+	return card
+
+func _make_one_two() -> CardData:
+	var card := CardData.new()
+	card.id = &"one_two"
+	card.display_name = "ONE-TWO"
+	card.cost = BattleConfig.ONE_TWO_COST
+	card.tags = [&"attack"] as Array[StringName]
+	# Both 5s are damage numbers (red): _number_color checks "damage" before
+	# "guard", so the second sentence's number reads as the hit it is, not as
+	# a guard grant. The break rule itself lives in the effect.
+	card.rules_text = "Deal %d damage. Breaks guard: deal %d damage again." % [
+		BattleConfig.ONE_TWO_DAMAGE, BattleConfig.ONE_TWO_DAMAGE]
+	var damage := DamageEffect.new()
+	damage.amount = BattleConfig.ONE_TWO_DAMAGE
+	var bonus := GuardBreakBonusEffect.new()
+	bonus.amount = BattleConfig.ONE_TWO_DAMAGE
+	card.effects = [damage, bonus] as Array[CardEffect]
+	return card
+
+func _make_strength_up() -> CardData:
+	var card := CardData.new()
+	card.id = &"strength_up"
+	card.display_name = "STRENGTH UP"
+	card.cost = BattleConfig.STRENGTH_UP_COST
+	# Not tagged defense: a damage buff wears the ATTACK (red) frame under
+	# the two-colourway system.
+	card.tags = [&"buff"] as Array[StringName]
+	# "STR" keyword-matches the strength status (word-bounded, so STRAIGHT
+	# stays safe); "Burn" is the second rule-keyword after Combo -- the
+	# mechanics live in the tooltips, no number here can go stale.
+	card.rules_text = "Gain %d STR. Burn." % BattleConfig.STRENGTH_UP_STACKS
+	card.burn = true
+	var buff := ApplyStatusEffect.new()
+	buff.status_id = StrengthStatus.ID
+	buff.stacks = BattleConfig.STRENGTH_UP_STACKS
+	buff.turns = BattleConfig.STATUS_PERMANENT
+	buff.target_self = true
+	card.effects = [buff] as Array[CardEffect]
+	return card
+
+func _make_prepared() -> CardData:
+	var card := CardData.new()
+	card.id = &"prepared"
+	card.display_name = "PREPARED"
+	card.cost = BattleConfig.PREPARED_COST
+	card.tags = [&"defense"] as Array[StringName]
+	# "Prepared" is a status keyword: yellow, tooltip-explained. Both 4s sit
+	# in sentences naming "guard", so they colour guard-blue.
+	card.rules_text = "Gain %d guard. Prepared: gain %d guard next turn." % [
+		BattleConfig.PREPARED_GUARD, BattleConfig.PREPARED_GUARD]
+	var guard := GuardEffect.new()
+	guard.amount = BattleConfig.PREPARED_GUARD
+	var delayed := ApplyStatusEffect.new()
+	delayed.status_id = PreparedStatus.ID
+	delayed.stacks = BattleConfig.PREPARED_GUARD
+	delayed.turns = BattleConfig.PREPARED_STATUS_TURNS
+	delayed.target_self = true
+	card.effects = [guard, delayed] as Array[CardEffect]
 	return card

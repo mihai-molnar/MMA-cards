@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/card_effect.gd" id="1_6q2x8"]
+[ext_resource type="Script" path="res://scripts/core/effects/damage_effect.gd" id="2_w0bgd"]
+[ext_resource type="Script" path="res://scripts/core/effects/guard_break_bonus_effect.gd" id="3_fcfpx"]
+[ext_resource type="Script" path="res://scripts/core/card_data.gd" id="4_w727h"]
+
+[sub_resource type="Resource" id="Resource_q44p7"]
+script = ExtResource("2_w0bgd")
+amount = 5
+
+[sub_resource type="Resource" id="Resource_c0x0k"]
+script = ExtResource("3_fcfpx")
+amount = 5
+
+[resource]
+script = ExtResource("4_w727h")
+id = &"one_two"
+display_name = "ONE-TWO"
+cost = 1
+tags = Array[StringName]([&"attack"])
+effects = Array[ExtResource("1_6q2x8")]([SubResource("Resource_q44p7"), SubResource("Resource_c0x0k")])
+rules_text = "Deal 5 damage. Breaks guard: deal 5 damage again."

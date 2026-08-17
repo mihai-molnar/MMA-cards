@@ -7,6 +7,8 @@ func run(t: TestRunner) -> void:
 	_test_starting_deck(t)
 	_test_effect_totals(t)
 	_test_straight_rules_text_matches_the_combo_rule(t)
+	_test_reward_cards_load(t)
+	_test_reward_cards_stay_out_of_the_starting_deck(t)
 
 func _test_cards_load(t: TestRunner) -> void:
 	# Compared against BattleConfig, not literals: the .tres files are baked
@@ -122,3 +124,51 @@ func _test_straight_rules_text_matches_the_combo_rule(t: TestRunner) -> void:
 
 	# The other cards stay combo-free.
 	t.check(not jab.rules_text.contains("Combo"), "jab's rules text mentions no combo")
+
+## The three reward cards, pinned against BattleConfig exactly like the
+## starting four -- the .tres files are baked, and this is the guard that
+## catches an edited constant with a forgotten regen.
+func _test_reward_cards_load(t: TestRunner) -> void:
+	var one_two: CardData = CardLibrary.load_card(&"one_two")
+	t.check(one_two != null, "one_two.tres loads")
+	t.check_eq(one_two.cost, BattleConfig.ONE_TWO_COST, "one-two costs BattleConfig.ONE_TWO_COST AP")
+	t.check_eq(one_two.total_base_damage(), BattleConfig.ONE_TWO_DAMAGE,
+		"one-two's BASE damage counts the first hit only -- the conditional hit must not feed combo math")
+	t.check_eq(one_two.effects.size(), 2, "one-two: a damage effect and the break bonus")
+	var bonus: GuardBreakBonusEffect = one_two.effects[1] as GuardBreakBonusEffect
+	t.check(bonus != null, "one-two's second effect is the guard-break bonus")
+	t.check_eq(bonus.amount, BattleConfig.ONE_TWO_DAMAGE, "the bonus hit deals the same 5")
+	t.check(not one_two.burn, "one-two does not burn")
+
+	var strength_up: CardData = CardLibrary.load_card(&"strength_up")
+	t.check_eq(strength_up.cost, BattleConfig.STRENGTH_UP_COST, "strength up costs 0 AP")
+	t.check(strength_up.burn, "strength up burns")
+	t.check_eq(strength_up.effects.size(), 1, "strength up has one effect")
+	var buff: ApplyStatusEffect = strength_up.effects[0] as ApplyStatusEffect
+	t.check(buff != null, "strength up applies a status")
+	t.check_eq(buff.status_id, &"strength", "the status is strength")
+	t.check_eq(buff.stacks, BattleConfig.STRENGTH_UP_STACKS, "it grants STRENGTH_UP_STACKS stacks")
+	t.check_eq(buff.turns, BattleConfig.STATUS_PERMANENT, "the strength is permanent for the fight")
+	t.check(buff.target_self, "it buffs the player, not the enemy")
+	t.check(strength_up.rules_text.contains("Burn"),
+		"strength up's rules text names the Burn keyword")
+
+	var prepared: CardData = CardLibrary.load_card(&"prepared")
+	t.check_eq(prepared.cost, BattleConfig.PREPARED_COST, "prepared costs 1 AP")
+	t.check_eq(prepared.total_guard(), BattleConfig.PREPARED_GUARD,
+		"prepared's immediate guard is PREPARED_GUARD")
+	t.check(prepared.has_tag(&"defense"), "prepared is a defense card (blue frame)")
+	t.check_eq(prepared.effects.size(), 2, "prepared: immediate guard plus the delayed status")
+	var delayed: ApplyStatusEffect = prepared.effects[1] as ApplyStatusEffect
+	t.check(delayed != null, "prepared's second effect applies a status")
+	t.check_eq(delayed.status_id, PreparedStatus.ID, "the status is prepared")
+	t.check_eq(delayed.stacks, BattleConfig.PREPARED_GUARD, "the delayed guard equals the immediate one")
+	t.check_eq(delayed.turns, BattleConfig.PREPARED_STATUS_TURNS, "with the lifecycle-ceiling duration")
+	t.check(delayed.target_self, "the delayed guard is the player's own")
+
+func _test_reward_cards_stay_out_of_the_starting_deck(t: TestRunner) -> void:
+	t.check_eq(CardLibrary.build_starting_deck().size(), 14,
+		"the starting deck is unchanged -- reward cards enter only via the rewards screen")
+	for card_id: StringName in BattleConfig.REWARD_CARDS:
+		t.check(not BattleConfig.DECK_COMPOSITION.has(card_id),
+			"%s is not in DECK_COMPOSITION" % card_id)
