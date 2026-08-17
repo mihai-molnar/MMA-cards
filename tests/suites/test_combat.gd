@@ -9,6 +9,7 @@ func run(t: TestRunner) -> void:
 	_test_strength_applied(t)
 	_test_clamping(t)
 	_test_preview(t)
+	_test_broke_guard(t)
 
 func _make_pair() -> Array:
 	return [Fighter.new("Player", 50), Fighter.new("Enemy", 48)]
@@ -82,3 +83,31 @@ func _test_preview(t: TestRunner) -> void:
 	t.check_eq(Combat.preview_damage(8, enemy, player), 12, "preview reflects strength for the intent display")
 	t.check_eq(player.hp, 50, "preview_damage never mutates the target")
 	t.check_eq(enemy.hp, 48, "preview_damage never mutates the source")
+
+## broke_guard: the target HAD guard and the hit took it to exactly zero. An
+## exact soak counts (the guard broke; nothing got through -- yet). No guard
+## to begin with is not a break.
+func _test_broke_guard(t: TestRunner) -> void:
+	var source := Fighter.new("A", 50)
+
+	var unguarded := Fighter.new("B", 50)
+	t.check(not Combat.resolve_damage(5, source, unguarded).broke_guard,
+		"no guard means no break")
+
+	var high_guard := Fighter.new("B", 50)
+	high_guard.add_guard(8)
+	t.check(not Combat.resolve_damage(5, source, high_guard).broke_guard,
+		"guard surviving the hit is not a break")
+	t.check_eq(high_guard.guard, 3, "guard chipped to 3")
+
+	var exact := Fighter.new("B", 50)
+	exact.add_guard(5)
+	var exact_result: Combat.DamageResult = Combat.resolve_damage(5, source, exact)
+	t.check(exact_result.broke_guard, "an exact soak IS a break")
+	t.check_eq(exact_result.hp_loss, 0, "the exact soak cost no hp")
+
+	var punched := Fighter.new("B", 50)
+	punched.add_guard(3)
+	var punched_result: Combat.DamageResult = Combat.resolve_damage(5, source, punched)
+	t.check(punched_result.broke_guard, "punching through remaining guard is a break")
+	t.check_eq(punched_result.hp_loss, 2, "the overflow hit hp")
