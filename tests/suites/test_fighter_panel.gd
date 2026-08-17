@@ -8,6 +8,7 @@ func run(t: TestRunner) -> void:
 	_test_chip_hover_emits_status_hovered(t)
 	_test_guard_chip(t)
 	_test_damage_pulse(t)
+	_test_update_override_presents_intermediate_state(t)
 	_test_guard_pulse(t)
 	_test_no_pulse_cases(t)
 	_test_shake_amplitude(t)
@@ -145,6 +146,33 @@ func _test_damage_pulse(t: TestRunner) -> void:
 	t.check_eq(panel.debug_last_pulse_kind, &"damage", "losing hp pulses damage")
 	t.check_eq(panel.debug_last_pulse_amount, 6, "damage pulse reports the hp lost")
 	t.check(panel.debug_hp_text().contains("42"), "hp text updates to the new value")
+	panel.free()
+
+## A multi-hit play presents as two beats: the first update shows an
+## INTERMEDIATE snapshot via the hp/guard overrides (the model is already at
+## its final state), the second shows the real fighter. The diff brain runs
+## against the SHOWN values both times, so each beat pulses its own hit.
+func _test_update_override_presents_intermediate_state(t: TestRunner) -> void:
+	var panel: FighterPanel = _new_panel(true)
+	var fighter := Fighter.new("Enemy", 50)
+	panel.update(fighter)
+
+	# The model takes both hits at once (2 hp then 5 hp); the view replays
+	# them: first beat overridden to hp 48, second beat the real 43.
+	fighter.apply_hp_loss(7)
+	panel.update(fighter, 48, 0)
+	t.check_eq(panel.debug_last_pulse_kind, &"damage", "the first beat pulses damage")
+	t.check_eq(panel.debug_last_pulse_amount, 2, "the first beat pulses only its own hit")
+	t.check(panel.debug_hp_text().contains("48"), "the first beat SHOWS the intermediate hp")
+
+	panel.update(fighter)
+	t.check_eq(panel.debug_last_pulse_kind, &"damage", "the second beat pulses damage too")
+	t.check_eq(panel.debug_last_pulse_amount, 5, "the second beat pulses the follow-up hit")
+	t.check(panel.debug_hp_text().contains("43"), "the second beat lands on the real hp")
+
+	# A negative override means "no override" -- the default path is untouched.
+	panel.update(fighter, -1, -1)
+	t.check_eq(panel.debug_last_pulse_kind, &"none", "no change means no pulse, overrides off")
 	panel.free()
 
 func _test_guard_pulse(t: TestRunner) -> void:

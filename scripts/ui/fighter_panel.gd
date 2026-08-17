@@ -176,24 +176,33 @@ func _make_icon(icon_name: StringName, at: Vector2, icon_size: float) -> Texture
 	return icon
 
 ## Refreshes the display and reacts to whatever changed since the last call.
-func update(fighter: Fighter) -> void:
-	_hp_value.text = "%d / %d" % [fighter.hp, fighter.max_hp]
+##
+## The optional overrides (negative means "off") present an INTERMEDIATE
+## snapshot: a multi-hit play mutates the model once, but the view replays
+## it as beats -- the first beat shows the state with the follow-up hit
+## held back, the second the real fighter. The diff brain runs against the
+## SHOWN values both times, so each beat pulses exactly its own hit.
+## Statuses always render live: no status changes between the two beats.
+func update(fighter: Fighter, hp_override: int = -1, guard_override: int = -1) -> void:
+	var shown_hp: int = fighter.hp if hp_override < 0 else hp_override
+	var shown_guard: int = fighter.guard if guard_override < 0 else guard_override
+	_hp_value.text = "%d / %d" % [shown_hp, fighter.max_hp]
 	_layout_value_label(_hp_value, _hp_icon.position.x, ICON_SIZE)
-	_guard_value.text = "+%d" % fighter.guard
-	_guard_chip.visible = fighter.guard > 0
+	_guard_value.text = "+%d" % shown_guard
+	_guard_chip.visible = shown_guard > 0
 	_rebuild_status_chips(fighter)
 
 	var kind: StringName = &"none"
 	var amount: int = 0
 	if _last_hp >= 0:
-		if fighter.hp < _last_hp:
+		if shown_hp < _last_hp:
 			kind = &"damage"
-			amount = _last_hp - fighter.hp
-		elif fighter.hp == _last_hp and fighter.guard < _last_guard:
+			amount = _last_hp - shown_hp
+		elif shown_hp == _last_hp and shown_guard < _last_guard:
 			kind = &"guard"
-			amount = _last_guard - fighter.guard
-	_last_hp = fighter.hp
-	_last_guard = fighter.guard
+			amount = _last_guard - shown_guard
+	_last_hp = shown_hp
+	_last_guard = shown_guard
 
 	# Guard also clears at its owner's turn start (expiry), which looks
 	# identical to absorption in this diff. suppress_next_guard_pulse() marks

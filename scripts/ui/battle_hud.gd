@@ -304,6 +304,20 @@ func debug_burned_text() -> String:
 func update_fighters(battle: BattleState) -> void:
 	_player_panel.update(battle.player)
 	_enemy_panel.update(battle.enemy)
+	_update_pile_counts(battle)
+
+## The first beat of a multi-hit play: the enemy panel presents the model's
+## final state MINUS the follow-up hit (hp and guard added back), so its
+## diff pulses only the first hit; the normal update_fighters that follows a
+## beat later lands the rest. Enemy-side only on purpose: cards damage the
+## enemy, and no enemy move multi-hits today.
+func update_fighters_mid_hit(battle: BattleState, held_hp_loss: int, held_absorbed: int) -> void:
+	_player_panel.update(battle.player)
+	_enemy_panel.update(battle.enemy,
+		battle.enemy.hp + held_hp_loss, battle.enemy.guard + held_absorbed)
+	_update_pile_counts(battle)
+
+func _update_pile_counts(battle: BattleState) -> void:
 	_draw_value.text = str(battle.deck.draw_pile.size())
 	_discard_value.text = str(battle.deck.discard_pile.size())
 

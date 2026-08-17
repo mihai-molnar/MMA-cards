@@ -15,6 +15,12 @@ signal turn_started(turn_number: int)
 signal ap_changed(current: int, maximum: int)
 signal hand_changed()
 signal card_played(card: CardData, combo_bonus: int)
+## A play produced a SECOND damage result (One-Two breaking guard): the
+## follow-up hit's own hp/absorb split, announced BEFORE fighters_changed so
+## the view can split the fighter update into two visible beats. The model
+## itself is already at its final state -- this is presentation information,
+## not a second mutation.
+signal follow_up_hit(hp_loss: int, absorbed: int)
 signal fighters_changed()
 signal intent_changed(text: String)
 signal log_line(text: String)
@@ -96,6 +102,14 @@ func play_card(index: int) -> bool:
 
 	_play_history.append(card)
 	_emit_log(context)
+
+	# Two damage results means a follow-up hit landed (today: One-Two through
+	# broken guard). Announced before the *_changed signals below so the view
+	# can bind the split into the same deferred update those signals drive.
+	var results: Array = context["results"]
+	if results.size() == 2:
+		var second: Combat.DamageResult = results[1]
+		follow_up_hit.emit(second.hp_loss, second.absorbed)
 
 	card_played.emit(card, bonus)
 	ap_changed.emit(ap, BattleConfig.AP_PER_TURN)

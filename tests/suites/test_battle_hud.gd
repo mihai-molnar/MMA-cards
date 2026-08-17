@@ -16,9 +16,31 @@ func run(t: TestRunner) -> void:
 	_test_pile_readouts_are_icon_counts(t)
 	_test_pile_icons_are_clickable(t)
 	_test_burned_icon_appears_with_burned_cards(t)
+	_test_update_fighters_mid_hit(t)
 	_test_end_turn_button_texture_states(t)
 	_test_last_damage_side(t)
 	_test_last_absorb_amount(t)
+
+## The first beat of a multi-hit play: the enemy panel presents the model's
+## state MINUS the follow-up hit, so its diff pulses only the first hit; the
+## normal update that follows lands the rest. The player panel and pile
+## counts behave exactly as in update_fighters.
+func _test_update_fighters_mid_hit(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	var battle := BattleState.new(5)
+	battle.start()
+	hud.update_fighters(battle)
+
+	battle.enemy.apply_hp_loss(7)
+	hud.update_fighters_mid_hit(battle, 5, 0)
+	var enemy_panel: FighterPanel = hud.debug_enemy_panel()
+	t.check_eq(enemy_panel.debug_last_pulse_kind, &"damage", "the first beat pulses damage")
+	t.check_eq(enemy_panel.debug_last_pulse_amount, 2,
+		"the first beat pulses the total minus the held-back follow-up")
+
+	hud.update_fighters(battle)
+	t.check_eq(enemy_panel.debug_last_pulse_amount, 5, "the second beat pulses the follow-up")
+	hud.free()
 
 func _test_fight_intro_banner(t: TestRunner) -> void:
 	var hud := BattleHud.new()

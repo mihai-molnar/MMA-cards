@@ -51,6 +51,10 @@ var target_scale: Vector2 = Vector2.ONE
 ## is_inside_tree() guard so it is observable even though tests instantiate
 ## cards detached and never see the tween itself run.
 var debug_last_lunge_anchor: Vector2 = Vector2.ZERO
+## Whether the last lunge was a double tap (One-Two breaking guard) --
+## recorded before the tree guard, per rule 3, so tests can assert the
+## animation DECISION detached even though no tween runs off-tree.
+var debug_last_lunge_follow_up: bool = false
 
 var _hovered: bool = false
 var _tween: Tween
@@ -400,8 +404,13 @@ static func clamped_hover_y(hover_y: float) -> float:
 
 ## The played-card animation: a short backswing away from the target, then the
 ## strike. The card must already have been reparented out of HandView.
-func lunge_to(anchor: Vector2) -> void:
+## `follow_up` is the double tap (One-Two breaking guard): the first strike
+## lands solid, the card pulls back a short jab's distance and strikes again,
+## fading only on the second blow -- timed so the second panel beat
+## (Juice.follow_up_beat()) lands with the restrike's impact by construction.
+func lunge_to(anchor: Vector2, follow_up: bool = false) -> void:
 	debug_last_lunge_anchor = anchor
+	debug_last_lunge_follow_up = follow_up
 	_lunging = true
 	z_index = LUNGE_Z
 	disabled = true
@@ -415,6 +424,7 @@ func lunge_to(anchor: Vector2) -> void:
 	var centre: Vector2 = target_position + CARD_SIZE / 2.0
 	var toward: Vector2 = (anchor - centre).normalized()
 	var wind_up: Vector2 = target_position - toward * Juice.ANTICIPATE_DIST
+	var strike_at: Vector2 = anchor - CARD_SIZE / 2.0
 
 	var tween := create_tween()
 	# Anticipation: pull back before striking, so the punch has a windup.
@@ -422,23 +432,37 @@ func lunge_to(anchor: Vector2) -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.parallel().tween_property(self, "target_scale", Juice.SQUASH_SCALE, Juice.ANTICIPATE_TIME)
 	# The strike: accelerate into the target, stretched along travel.
-	tween.chain().tween_property(self, "target_position", anchor - CARD_SIZE / 2.0, Juice.LUNGE_TIME) \
+	tween.chain().tween_property(self, "target_position", strike_at, Juice.LUNGE_TIME) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
 	tween.parallel().tween_property(self, "target_scale",
 		Juice.STRETCH_SCALE * Juice.LUNGE_SCALE, Juice.LUNGE_TIME)
 	tween.parallel().tween_property(self, "target_rotation", 0.0, Juice.LUNGE_TIME)
-	# Stay fully opaque for LUNGE_FADE_RATIO of the strike, then fade over what
-	# remains, in parallel with the position tween above. A plain
-	# tween_interval() followed by a plain tween_property() does NOT achieve
-	# this: a non-parallel tweener starts after the *whole* previous parallel
-	# group finishes (here, LUNGE_TIME -- the longest tweener in the group),
-	# not after just the interval, so the fade would never visibly start
-	# early (confirmed empirically before landing on this). set_delay() on
-	# the parallel-joined PropertyTweener itself is the correct primitive:
-	# it delays that one tweener's own start within the group.
-	var fade_time: float = Juice.LUNGE_TIME * (1.0 - Juice.LUNGE_FADE_RATIO)
-	var fade_delay: float = Juice.LUNGE_TIME - fade_time
-	tween.parallel().tween_property(self, "modulate:a", 0.0, fade_time).set_delay(fade_delay)
+	if follow_up:
+		# Solid through the first strike; the retract and restrike carry the
+		# fade instead. The retract is along the approach line, so the pair
+		# reads as one combination thrown from the same stance.
+		tween.chain().tween_property(self, "target_position",
+			strike_at - toward * Juice.FOLLOW_UP_RETRACT_DIST, Juice.FOLLOW_UP_RETRACT_TIME) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tween.chain().tween_property(self, "target_position", strike_at,
+			Juice.FOLLOW_UP_RESTRIKE_TIME) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		var restrike_fade: float = Juice.FOLLOW_UP_RESTRIKE_TIME * (1.0 - Juice.LUNGE_FADE_RATIO)
+		tween.parallel().tween_property(self, "modulate:a", 0.0, restrike_fade) \
+			.set_delay(Juice.FOLLOW_UP_RESTRIKE_TIME - restrike_fade)
+	else:
+		# Stay fully opaque for LUNGE_FADE_RATIO of the strike, then fade over
+		# what remains, in parallel with the position tween above. A plain
+		# tween_interval() followed by a plain tween_property() does NOT achieve
+		# this: a non-parallel tweener starts after the *whole* previous parallel
+		# group finishes (here, LUNGE_TIME -- the longest tweener in the group),
+		# not after just the interval, so the fade would never visibly start
+		# early (confirmed empirically before landing on this). set_delay() on
+		# the parallel-joined PropertyTweener itself is the correct primitive:
+		# it delays that one tweener's own start within the group.
+		var fade_time: float = Juice.LUNGE_TIME * (1.0 - Juice.LUNGE_FADE_RATIO)
+		var fade_delay: float = Juice.LUNGE_TIME - fade_time
+		tween.parallel().tween_property(self, "modulate:a", 0.0, fade_time).set_delay(fade_delay)
 	tween.chain().tween_callback(queue_free)
 	_tween = tween
 

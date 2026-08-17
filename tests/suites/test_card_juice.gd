@@ -5,6 +5,7 @@ const TestRunner := preload("res://tests/run_tests.gd")
 func run(t: TestRunner) -> void:
 	_test_idle_pauses_while_hovered(t)
 	_test_lunge_records_anchor_and_marks_lunging(t)
+	_test_lunge_records_follow_up(t)
 	_test_tilt_starts_neutral(t)
 	_test_hover_uses_juice_values(t)
 	_test_hover_animates_rather_than_snaps(t)
@@ -44,7 +45,21 @@ func _test_lunge_records_anchor_and_marks_lunging(t: TestRunner) -> void:
 	view.lunge_to(Vector2(1022, 170))
 	t.check_eq(view.debug_last_lunge_anchor, Vector2(1022, 170),
 		"lunge_to records its anchor before any tree guard")
+	t.check_eq(view.debug_last_lunge_follow_up, false,
+		"a plain lunge records a single strike")
 	# Detached, lunge_to frees the node, so nothing else is asserted here.
+
+## One-Two's double tap: the decision (this lunge strikes twice) is recorded
+## before the tree guard, per rule 3, so the animation choice is assertable
+## on a detached view even though the tween itself never runs here.
+func _test_lunge_records_follow_up(t: TestRunner) -> void:
+	var view: CardView = _new_card()
+	view.set_rest_transform(Vector2(300, 430), 0.2, 3)
+	view.lunge_to(Vector2(1022, 170), true)
+	t.check_eq(view.debug_last_lunge_follow_up, true,
+		"a follow-up lunge records the double strike before any tree guard")
+	t.check(Juice.follow_up_beat() > 0.0,
+		"the second beat lands a positive interval after the first")
 
 func _test_tilt_starts_neutral(t: TestRunner) -> void:
 	var view: CardView = _new_card()

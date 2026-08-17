@@ -53,6 +53,13 @@ const LUNGE_FADE_RATIO: float = 0.6
 ## as lag, and never at 0.0, which made every hit register while the card
 ## was still in the hand.
 const LUNGE_IMPACT_RATIO: float = 0.85
+## The double tap (One-Two breaking guard): after the first strike lands the
+## card pulls back a short jab's distance and strikes again. The retract is
+## quick and shallow on purpose -- it reads as the same combination, not a
+## second wind-up.
+const FOLLOW_UP_RETRACT_DIST: float = 42.0
+const FOLLOW_UP_RETRACT_TIME: float = 0.10
+const FOLLOW_UP_RESTRIKE_TIME: float = 0.16
 ## A beat between the killing blow landing and the result banner, so the
 ## impact reads before the screen changes subject.
 const RESULT_BEAT: float = 0.30
@@ -168,6 +175,15 @@ static func screen_shake_amplitude(amount: int) -> float:
 ## windup plus the impact fraction of the strike.
 static func play_impact_delay() -> float:
 	return ANTICIPATE_TIME + LUNGE_TIME * LUNGE_IMPACT_RATIO
+
+## How long after the FIRST hit lands the follow-up hit lands: the tail of
+## the first strike, the retract, and the impact fraction of the restrike.
+## Derived from the same constants the double-tap tween is built from, so
+## the second panel beat and the second visual strike land together by
+## construction rather than by two hand-tuned numbers drifting apart.
+static func follow_up_beat() -> float:
+	return LUNGE_TIME * (1.0 - LUNGE_IMPACT_RATIO) \
+		+ FOLLOW_UP_RETRACT_TIME + FOLLOW_UP_RESTRIKE_TIME * LUNGE_IMPACT_RATIO
 
 ## How long the world freezes for a hit of `amount` damage.
 static func hit_stop_duration(amount: int) -> float:

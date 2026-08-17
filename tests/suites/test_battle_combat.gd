@@ -16,6 +16,7 @@ func run(t: TestRunner) -> void:
 	_test_win(t)
 	_test_loss(t)
 	_test_no_intent_after_fatal_enemy_attack(t)
+	_test_follow_up_hit_signal(t)
 
 func _new_battle() -> BattleState:
 	var battle := BattleState.new(12345)
@@ -266,3 +267,35 @@ func _test_no_intent_after_fatal_enemy_attack(t: TestRunner) -> void:
 	t.check(battle.is_over, "the battle ends on the fatal enemy attack")
 	t.check_eq(battle_over_fired.size(), 1, "battle_over fires once on the fatal attack")
 	t.check_eq(intents_after_over.size(), 0, "no intent_changed fires after battle_over on a fatal enemy attack")
+
+## One-Two's second hit is a separate presentation beat: when a play's
+## effects produce a second DamageResult, the model announces it (with that
+## hit's own hp/absorb split) BEFORE fighters_changed, so the view can split
+## the fighter update into two beats. A play with one hit stays silent.
+func _test_follow_up_hit_signal(t: TestRunner) -> void:
+	var battle: BattleState = _new_battle()
+	_stack_hand(battle, [&"one_two"])
+	battle.enemy.add_guard(3)
+	var follow_ups: Array = []
+	var order: Array = []
+	battle.follow_up_hit.connect(func(hp_loss: int, absorbed: int) -> void:
+		follow_ups.append([hp_loss, absorbed])
+		order.append(&"follow_up"))
+	battle.fighters_changed.connect(func() -> void: order.append(&"fighters"))
+
+	t.check(battle.play_card(0), "one-two plays")
+	t.check_eq(follow_ups.size(), 1, "breaking guard announces the follow-up hit")
+	t.check_eq(follow_ups[0][0], BattleConfig.ONE_TWO_DAMAGE,
+		"the follow-up's hp loss is its own hit, not the total")
+	t.check_eq(follow_ups[0][1], 0, "the follow-up hit found no guard left to absorb")
+	t.check(order.find(&"follow_up") < order.find(&"fighters"),
+		"follow_up_hit fires before fighters_changed so the view can arm the split")
+
+	var held: BattleState = _new_battle()
+	_stack_hand(held, [&"one_two"])
+	held.enemy.add_guard(8)
+	var held_follow_ups: Array = []
+	held.follow_up_hit.connect(func(_hp_loss: int, _absorbed: int) -> void:
+		held_follow_ups.append(true))
+	held.play_card(0)
+	t.check_eq(held_follow_ups.size(), 0, "guard holding means one hit and no announcement")

@@ -315,8 +315,11 @@ func _hand_off(view: CardView, index: int) -> void:
 
 ## Called by BattleView once battle.play_card(index) has returned true. Only
 ## now does the card actually leave -- a rejected play never reaches here, so
-## the lunge animation never runs for it.
-func launch_play(index: int) -> void:
+## the lunge animation never runs for it. `follow_up` marks a play whose
+## effects landed a second hit (One-Two breaking guard): the lunge becomes
+## CardView's double tap. Passed through rather than decided here -- whether
+## a second hit landed is the model's knowledge, not the hand's.
+func launch_play(index: int, follow_up: bool = false) -> void:
 	if _pending_view == null or _pending_index != index:
 		return
 	var view: CardView = _pending_view
@@ -325,7 +328,7 @@ func launch_play(index: int) -> void:
 	var anchor: Vector2 = _attack_anchor
 	if view.card != null and view.card.has_tag(&"defense"):
 		anchor = _defend_anchor
-	view.lunge_to(anchor)
+	view.lunge_to(anchor, follow_up)
 
 ## The play was rejected: put the card back exactly where it was, including
 ## its original position among its siblings.

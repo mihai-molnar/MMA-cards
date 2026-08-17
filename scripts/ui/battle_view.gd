@@ -38,6 +38,23 @@ var _pending_hit_sound: StringName = &""
 ## discarding at end_turn) must not re-deal the cards still in hand.
 var _pending_deal: bool = false
 
+## No follow-up hit pending. Vector2i packs the announced follow-up's
+## (hp_loss, absorbed); -1 marks absence, since a real hit can be (0, 0)
+## in principle (fully clamped) and 0 therefore cannot be the sentinel.
+const _NO_FOLLOW_UP: Vector2i = Vector2i(-1, -1)
+
+## The follow-up hit BattleState announced during the current play (One-Two
+## breaking guard), armed exactly like _pending_hit_sound: follow_up_hit is
+## emitted synchronously before fighters_changed, and the handler below
+## binds it into the deferred fighter update so a racing later event cannot
+## overwrite an in-flight one.
+var _pending_follow_up: Vector2i = _NO_FOLLOW_UP
+
+## Whether the most recent fighters_changed carried a follow-up: read by
+## _on_card_chosen (for the double-tap lunge) and _on_battle_over (the
+## banner must wait for the SECOND beat when the follow-up was the kill).
+var _last_play_follow_up: bool = false
+
 func _ready() -> void:
 	run = RunState.new()
 	_build_ui()
@@ -130,9 +147,15 @@ func _connect_battle() -> void:
 	battle.turn_started.connect(_on_turn_started)
 	battle.ap_changed.connect(_on_ap_changed)
 	battle.hand_changed.connect(_on_hand_changed)
+	battle.follow_up_hit.connect(_on_follow_up_hit)
 	battle.fighters_changed.connect(_on_fighters_changed)
 	battle.intent_changed.connect(_on_intent_changed)
 	battle.battle_over.connect(_on_battle_over)
+
+## Emitted synchronously from inside play_card, BEFORE fighters_changed --
+## arm the split; _on_fighters_changed binds and clears it.
+func _on_follow_up_hit(hp_loss: int, absorbed: int) -> void:
+	_pending_follow_up = Vector2i(hp_loss, absorbed)
 
 func _on_turn_started(turn_number: int) -> void:
 	# Player turn start clears the player's guard by expiry (BattleState
@@ -252,14 +275,18 @@ func _on_end_turn_hovered(anchor: Vector2, hovered: bool) -> void:
 func _on_fighters_changed() -> void:
 	hand_view.refresh_states(battle)
 	var delay: float = _pending_reaction_delay
-	# Bound rather than re-read at fire time: the sound belongs to the attack
-	# that caused THIS update, not to whatever is pending when the timer fires.
+	# Bound rather than re-read at fire time: the sound (and the follow-up
+	# split) belong to the attack that caused THIS update, not to whatever is
+	# pending when the timer fires.
 	var hit_sound: StringName = _pending_hit_sound
+	var follow_up: Vector2i = _pending_follow_up
+	_pending_follow_up = _NO_FOLLOW_UP
+	_last_play_follow_up = follow_up != _NO_FOLLOW_UP
 	if delay > 0.0 and is_inside_tree():
 		get_tree().create_timer(delay).timeout.connect(
-			_land_fighter_update.bind(hit_sound))
+			_land_fighter_update.bind(hit_sound, follow_up))
 	else:
-		_land_fighter_update(hit_sound)
+		_land_fighter_update(hit_sound, follow_up)
 
 ## The telegraph obeys the same rule as the fighter panels above: the model
 ## re-emits intent synchronously from inside play_card(), while the card is
@@ -285,8 +312,30 @@ func _land_intent_update() -> void:
 ## whole-view impact can be driven from that without BattleState needing a
 ## payload. Safe to run late or twice: a second update with nothing new to
 ## diff records "none" and last_damage_amount() returns 0.
-func _land_fighter_update(hit_sound: StringName = &"") -> void:
+##
+## A follow-up (One-Two breaking guard) splits into two beats: the first
+## presents the state with the follow-up hit held back (the panel diffs and
+## pulses only the first hit), the second lands the rest a follow_up_beat()
+## later -- the same moment the card's restrike visually connects. Detached
+## (tests), the split collapses to the plain single update.
+func _land_fighter_update(hit_sound: StringName = &"", follow_up: Vector2i = _NO_FOLLOW_UP) -> void:
+	if follow_up != _NO_FOLLOW_UP and is_inside_tree():
+		hud.update_fighters_mid_hit(battle, follow_up.x, follow_up.y)
+		_fire_beat_feedback(hit_sound)
+		get_tree().create_timer(Juice.follow_up_beat()).timeout.connect(
+			_land_follow_up_beat.bind(hit_sound))
+		return
 	hud.update_fighters(battle)
+	_fire_beat_feedback(hit_sound)
+
+## The second beat: the real (final) state lands, and its own diff drives
+## its own sound and impact -- a second punch, not an echo of the first.
+func _land_follow_up_beat(hit_sound: StringName) -> void:
+	hud.update_fighters(battle)
+	_fire_beat_feedback(hit_sound)
+
+## Sound and impact for whatever the panels just diffed.
+func _fire_beat_feedback(hit_sound: StringName) -> void:
 	var amount: int = hud.last_damage_amount()
 	# A fully blocked hit costs no hp, so it takes none of the impact juice
 	# below -- but it still SOUNDS: impact_sound swaps the attack's own sound
@@ -322,8 +371,10 @@ func _on_card_chosen(index: int) -> void:
 	_pending_hit_sound = &""
 	# The card only departs the hand once BattleState confirms the play; a
 	# rejected play must leave HandView untouched (see HandView.launch_play).
+	# _last_play_follow_up was set by the fighters_changed this play emitted
+	# synchronously above, so the lunge knows to double-tap.
 	if played:
-		hand_view.launch_play(index)
+		hand_view.launch_play(index, _last_play_follow_up)
 
 func _on_end_turn_pressed() -> void:
 	sound_fx.play(&"click")
@@ -346,6 +397,10 @@ func _on_end_turn_pressed() -> void:
 func _on_battle_over(player_won: bool) -> void:
 	run.record_result(player_won, battle.player.hp)
 	var delay: float = _pending_reaction_delay
+	# When the killing blow was a follow-up hit, the banner also waits for
+	# the SECOND beat -- otherwise it covers the restrike it announces.
+	if _last_play_follow_up:
+		delay += Juice.follow_up_beat()
 	if delay > 0.0 and is_inside_tree():
 		get_tree().create_timer(delay + Juice.RESULT_BEAT).timeout.connect(
 			_show_result.bind(player_won))

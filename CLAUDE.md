@@ -22,7 +22,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `1190 checks, 0 failures` / `PASS`.
+on a clean tree ends with `1209 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -301,10 +301,16 @@ sag at the zone edge as a fraction of zone width). Glyphs stay upright; at
 this bow the tangent rotation would move nothing visibly. A flat title
 across the arch read as pasted on — flagged from an in-game screenshot.
 
-`COST_CENTRE` and `TYPE_ZONE` carry a deliberate `.005`-`.007` downward
-nudge relative to their icons' measured pixel centres: caps and digits have
-no descender, so a Label centring its full line box parks the glyph
-optically high in the icon.
+`COST_CENTRE` carries a deliberate `.005`-`.007` downward nudge relative
+to its icon's measured pixel centre: caps and digits have no descender, so
+a Label centring its full line box parks the glyph optically high in the
+icon. `TYPE_ZONE` once carried the same nudge but was tuned against a
+MIS-measured plate centre (`.595`; the plate's interior actually spans
+y `.564`-`.618`, centre `.591`), which parked the type text visibly LOW —
+flagged from a rewards-screen screenshot, confirmed by a 4x crop. The zone
+now centres on the re-measured `(.499, .592)` with the nudge shrunk to
+~`.001`; if the plate is ever repainted, re-measure the interior, don't
+re-apply the old nudge.
 `RULES_SIZE` is `11`, chosen by rendering rather than arithmetic: `10` read
 lost in the master template's tall panel. Nothing about it can be derived
 from the zone's dimensions alone.
@@ -615,6 +621,25 @@ scene idle ~30 frames first — the startup hitch's inflated deltas skew any
 timer created near boot, which reads as an early fire but is a
 measurement artifact.
 
+**A multi-hit play lands as TWO beats, not one big one.** One-Two breaking
+guard produces a second `Combat.DamageResult`; `BattleState` announces it
+via `follow_up_hit(hp_loss, absorbed)` — emitted BEFORE `fighters_changed`,
+so `BattleView._on_fighters_changed` binds it into the same deferred
+update (the arm-before-play pattern `_pending_hit_sound` uses; presentation
+info, not a second mutation — the model is already final). At impact time
+the view presents the state with the follow-up hit HELD BACK
+(`BattleHud.update_fighters_mid_hit`, driving `FighterPanel.update`'s
+hp/guard overrides so the panel diffs and pulses only the first hit), then
+lands the real state `Juice.follow_up_beat()` later — a second damage
+number, punch sound, flash and shake of its own. The card's lunge becomes a
+double tap (`lunge_to(anchor, true)`: solid first strike, short retract,
+fading restrike), and `follow_up_beat()` is DERIVED from the same Juice
+constants that build that tween, so the second panel beat and the restrike
+connect together by construction. The result banner adds the same beat when
+the follow-up was the kill. Verified in the real scene by hp-label sampling
+(drops at ~0.50s and ~0.30s later) plus a contact sheet showing two
+distinct impact flashes.
+
 **`FighterPanel` derives damage feedback by diffing hp/guard itself**, so
 `BattleState` needs no damage payload and `scripts/core/` stays presentation-
 free. One subtlety: guard clearing at a turn start is indistinguishable from
@@ -740,7 +765,7 @@ Playable two-fight run (Brawler then Kickboxer, HP carried between fights)
 WITH a card reward -- One-Two, Strength Up or Prepared, or skip -- offered
 between them, fully art-directed down to the fight screen itself (portrait
 fight stage with a slam intro, icon readouts, outlined HUD text), sound
-effects on every battle beat (see "Sound" under Game feel), 1190 headless
+effects on every battle beat (see "Sound" under Game feel), 1209 headless
 checks. `RunState.deck_ids` persists the run's deck across fights -- a
 reward pick joins it and every fresh `BattleState` is built from it, so a
 card taken after fight 1 is in the pool (and can be drawn, played, or
