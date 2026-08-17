@@ -12,6 +12,7 @@ var status_tooltip: StatusTooltip
 var screen_fx: ScreenFx
 var sound_fx: SoundFx
 var pile_view: PileView
+var rewards_view: RewardsView
 
 ## Set by _on_card_chosen just before calling battle.play_card(), which emits
 ## fighters_changed synchronously -- so this is the only way _react_to_damage
@@ -59,6 +60,7 @@ func _start_fight() -> void:
 	status_tooltip.hide_tooltip()
 	# Silent: no click sound over the slam, and no stale pile over a new fight.
 	pile_view.dismiss()
+	rewards_view.dismiss()
 	hud.stage().set_portraits(&"player", opponent.id)
 	hud.stage().slam_in(_on_slam_impact, _on_slam_settled)
 
@@ -102,6 +104,14 @@ func _build_ui() -> void:
 	pile_view.closed.connect(_on_pile_closed)
 	pile_view.card_hovered.connect(_on_pile_card_hovered)
 	hud.add_child(pile_view)
+
+	# The reward chooser. Same layer cake as the pile browser: covers the
+	# battle, stays under the tooltip so the new cards' keywords (Burn, STR,
+	# Prepared) explain themselves right where the player first reads them.
+	rewards_view = RewardsView.new()
+	rewards_view.finished.connect(_on_rewards_finished)
+	rewards_view.card_hovered.connect(_on_pile_card_hovered)
+	hud.add_child(rewards_view)
 
 	# Attacks fly at the enemy, Block pulls back to the player.
 	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
@@ -354,10 +364,23 @@ func _show_result(player_won: bool) -> void:
 		hud.show_fight_intro(run.fight_number(), run.current_opponent().display_name)
 	hand_view.refresh_states(battle)
 
-## CONTINUE: the next fight of the same run, carried hp and all.
+## CONTINUE on a mid-run win: the rewards screen first; the next fight
+## starts from _on_rewards_finished. Losses and the completed run show
+## RESTART instead and never pass through here.
 func _on_continue_pressed() -> void:
 	sound_fx.play(&"click")
 	hud.hide_result()
+	status_tooltip.hide_tooltip()
+	rewards_view.open(RewardPool.options())
+
+## The reward decision: a non-empty id joins the run deck; either way the
+## next fight starts, with the same transition suppressions Continue used
+## to run directly.
+func _on_rewards_finished(card_id: StringName) -> void:
+	sound_fx.play(&"click")
+	status_tooltip.hide_tooltip()
+	if card_id != &"":
+		run.add_card(card_id)
 	_suppress_transition_guard_pulses()
 	_start_fight()
 
