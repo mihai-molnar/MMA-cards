@@ -51,12 +51,15 @@ const TITLE_ARC_BOW: float = 0.039
 ## the zone contains the measured opening.
 const WINDOW_ZONE: Rect2 = Rect2(0.10, 0.14, 0.80, 0.47)
 ## The small riveted plate hanging under the art window -- the type plate,
-## where Slay the Spire prints "Attack". The plate's painted interior runs
-## y .570-.620 (centre .595); the zone centres the text on .600 -- the same
-## ~.005 no-descender optical nudge the cost octagon carries, because
-## caps-only text centred by its full line box parks visibly high in the
-## plate (shipped that way once, flagged from an in-game screenshot).
-const TYPE_ZONE: Rect2 = Rect2(0.354, 0.575, 0.30, 0.050)
+## where Slay the Spire prints "Attack". RE-MEASURED off the master PNG
+## (the earlier note said the interior ran y .570-.620; scanning the actual
+## plate rows found x .342-.657, y .564-.618, centre (.499, .591)): the old
+## zone centre of .600 was a no-descender nudge applied to that mis-measured
+## .595, which parked the caps visibly LOW in the plate -- flagged from a
+## rewards-screen screenshot, confirmed by a 4x crop of the render. The zone
+## now centres on (.499, .592): the measured centre, with the nudge reduced
+## to ~.001 because the mismeasure had been absorbing most of it.
+const TYPE_ZONE: Rect2 = Rect2(0.349, 0.567, 0.30, 0.050)
 ## A WRAPPING BOX, not a text extent: the label centres each wrapped line
 ## inside it, so what must fit the artwork is each rendered LINE, not this
 ## box (test_card_template.gd models the wrap and asserts exactly that).
