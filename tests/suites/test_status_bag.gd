@@ -10,6 +10,7 @@ func run(t: TestRunner) -> void:
 	_test_expiry_countdown(t)
 	_test_permanent(t)
 	_test_clear(t)
+	_test_remove(t)
 
 ## The default re-apply keeps the LONGER duration (a refresh); extend mode
 ## ADDS the durations instead -- the Low Kick semantics, where each kick
@@ -80,3 +81,11 @@ func _test_clear(t: TestRunner) -> void:
 	bag.apply(&"strength", 2, 2)
 	bag.clear()
 	t.check_eq(bag.get_stacks(&"strength"), 0, "clear() removes everything")
+
+func _test_remove(t: TestRunner) -> void:
+	var bag := StatusBag.new()
+	bag.apply(&"prepared", 4, 2)
+	bag.remove(&"prepared")
+	t.check(not bag.has(&"prepared"), "remove erases the status")
+	bag.remove(&"prepared")
+	t.check(not bag.has(&"prepared"), "removing an absent status is safe")

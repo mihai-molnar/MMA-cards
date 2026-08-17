@@ -62,3 +62,6 @@ func tick_turn_end() -> void:
 
 func clear() -> void:
 	_entries.clear()
+
+func remove(id: StringName) -> void:
+	_entries.erase(id)

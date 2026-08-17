@@ -31,6 +31,13 @@ const LEG_INJURY_TURNS: int = 1
 ## weight on the leg.
 const LEG_INJURY_DAMAGE_MULT: float = 0.5
 
+const PREPARED_GUARD: int = 4
+## Lifecycle ceiling for the Prepared status: applied mid-turn, it must
+## survive its owner's turn-end tick (2 -> 1) to still be alive at the next
+## turn start, where the payout consumes it. The hook consumption is the
+## real lifecycle; this is the belt-and-braces bound. Not a balance knob.
+const PREPARED_STATUS_TURNS: int = 2
+
 const BRAWLER_MAX_HP: int = 48
 const BRAWLER_ATTACK_DAMAGE: int = 8
 const BRAWLER_GUARD_AMOUNT: int = 8

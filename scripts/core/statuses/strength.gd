@@ -2,7 +2,7 @@ class_name StrengthStatus
 extends RefCounted
 
 ## Each stack adds BattleConfig.STRENGTH_DAMAGE_PER_STACK of base outgoing damage.
-## Every status definition must provide ID, DISPLAY_NAME, and BOTH modifier
+## Every status definition must provide ID, DISPLAY_NAME, description() and all THREE
 ## statics — StatusRegistry calls them unconditionally.
 
 const ID: StringName = &"strength"
@@ -22,3 +22,7 @@ static func modify_outgoing_damage(amount: int, stacks: int) -> int:
 
 static func modify_incoming_damage(amount: int, _stacks: int) -> int:
 	return amount
+
+## Pass-through: nothing happens at turn start and the status is kept.
+static func on_turn_start(_fighter: Fighter, _stacks: int) -> bool:
+	return false

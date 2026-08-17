@@ -8,6 +8,7 @@ extends RefCounted
 const DEFINITIONS: Dictionary = {
 	&"strength": preload("res://scripts/core/statuses/strength.gd"),
 	&"leg_injury": preload("res://scripts/core/statuses/leg_injury.gd"),
+	&"prepared": preload("res://scripts/core/statuses/prepared.gd"),
 }
 
 static func modify_outgoing(bag: StatusBag, amount: int) -> int:
@@ -49,3 +50,15 @@ static func shows_turns(id: StringName) -> bool:
 		return false
 	var definition: GDScript = DEFINITIONS[id]
 	return definition.SHOW_TURNS
+
+## Fires every active status's on_turn_start at its owner's turn start
+## (BattleState calls this immediately after expire_guard(), on both sides).
+## A hook returning true is consumed -- removed from the bag. ids() returns
+## a copy of the keys, so removing while iterating is safe.
+static func apply_turn_start(fighter: Fighter) -> void:
+	for id: StringName in fighter.statuses.ids():
+		if not DEFINITIONS.has(id):
+			continue
+		var definition: GDScript = DEFINITIONS[id]
+		if definition.on_turn_start(fighter, fighter.statuses.get_stacks(id)):
+			fighter.statuses.remove(id)

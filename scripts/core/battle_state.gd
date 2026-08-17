@@ -8,6 +8,7 @@ extends RefCounted
 ##   player turn start -> player acts -> player turn end -> enemy turn -> repeat
 ##
 ## Guard expires at its owner's turn START (so it survives the opponent's turn).
+## Turn-start status hooks (Prepared's delayed guard) fire right after that expiry.
 ## Status timers decrement at its owner's turn END.
 
 signal turn_started(turn_number: int)
@@ -126,6 +127,7 @@ func end_turn() -> void:
 func _begin_player_turn() -> void:
 	turn_number += 1
 	player.expire_guard()
+	StatusRegistry.apply_turn_start(player)
 	_play_history.clear()
 	deck.draw(BattleConfig.HAND_SIZE)
 	ap = BattleConfig.AP_PER_TURN
@@ -138,6 +140,7 @@ func _begin_player_turn() -> void:
 
 func _run_enemy_turn() -> void:
 	enemy.expire_guard()
+	StatusRegistry.apply_turn_start(enemy)
 
 	var context: Dictionary = {"bonus_damage": 0, "results": [], "log": []}
 	for effect: CardEffect in brain.build_effects():

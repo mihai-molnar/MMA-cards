@@ -10,6 +10,8 @@ func run(t: TestRunner) -> void:
 	_test_player_guard_timing(t)
 	_test_enemy_guard_timing(t)
 	_test_restart_resets_full_state(t)
+	_test_prepared_pays_out_at_next_turn_start(t)
+	_test_enemy_turn_start_fires_the_hook(t)
 
 func _new_battle() -> BattleState:
 	var battle := BattleState.new(12345)
@@ -142,3 +144,47 @@ func _test_restart_resets_full_state(t: TestRunner) -> void:
 	t.check_eq(battle.brain.rotation_index(), 0, "restart returns the enemy brain to the top of its rotation")
 	t.check(not battle.is_over, "restart clears is_over")
 	t.check_eq(battle.turn_number, 1, "restart returns to turn 1")
+
+## Prepared's full lifecycle inside a real battle: +4 guard now; at the NEXT
+## player turn start the old guard expires FIRST, then the payout lands --
+## the second 4 never stacks on leftovers of the first. Effects are applied
+## directly (exactly what play_card does) so the test needs no card in hand.
+func _test_prepared_pays_out_at_next_turn_start(t: TestRunner) -> void:
+	var battle := BattleState.new(12345)
+	battle.start()
+	var context: Dictionary = {"bonus_damage": 0, "results": [], "log": []}
+	var guard := GuardEffect.new()
+	guard.amount = BattleConfig.PREPARED_GUARD
+	guard.apply(battle.player, battle.enemy, context)
+	var status := ApplyStatusEffect.new()
+	status.status_id = PreparedStatus.ID
+	status.stacks = BattleConfig.PREPARED_GUARD
+	status.turns = BattleConfig.PREPARED_STATUS_TURNS
+	status.target_self = true
+	status.apply(battle.player, battle.enemy, context)
+
+	t.check_eq(battle.player.guard, BattleConfig.PREPARED_GUARD, "the immediate guard landed")
+	t.check(battle.player.statuses.has(PreparedStatus.ID), "the delayed grant is pending")
+
+	battle.end_turn()
+
+	# New player turn: expiry zeroed the old guard, then the payout granted
+	# exactly PREPARED_GUARD -- whatever the enemy chipped off in between.
+	t.check_eq(battle.player.guard, BattleConfig.PREPARED_GUARD,
+		"payout lands AFTER expiry: exactly the delayed amount, no leftovers")
+	t.check(not battle.player.statuses.has(PreparedStatus.ID), "the status consumed itself")
+
+## The hook is symmetric: an enemy status pays out at the ENEMY's turn start
+## (inside end_turn, after enemy.expire_guard()). The final guard assertion
+## leans on the brawler's FIXED rotation (seed-independent): turn 1 is an
+## attack with no block move, so the payout's 4 guard survives the enemy
+## turn intact.
+func _test_enemy_turn_start_fires_the_hook(t: TestRunner) -> void:
+	var battle := BattleState.new(12345)
+	battle.start()
+	battle.enemy.statuses.apply(PreparedStatus.ID, 4, BattleConfig.PREPARED_STATUS_TURNS)
+	battle.end_turn()
+	t.check(not battle.enemy.statuses.has(PreparedStatus.ID),
+		"the enemy's prepared status was consumed at its turn start")
+	t.check_eq(battle.enemy.guard, 4,
+		"the enemy's payout granted its guard (brawler turn 1 adds no guard of its own)")

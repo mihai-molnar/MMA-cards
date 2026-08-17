@@ -6,7 +6,7 @@ extends RefCounted
 ## stack-scaled -- a leg is injured or it is not; extra applications refresh
 ## the duration through StatusBag's usual rules rather than deepening the
 ## debuff. Every status definition must provide ID, DISPLAY_NAME,
-## description() and BOTH modifier statics -- StatusRegistry calls them
+## description() and all THREE statics -- StatusRegistry calls them
 ## unconditionally.
 ##
 ## DISPLAY_NAME doubles as the card-text KEYWORD: CardTemplate colours it
@@ -29,3 +29,7 @@ static func modify_outgoing_damage(amount: int, stacks: int) -> int:
 
 static func modify_incoming_damage(amount: int, _stacks: int) -> int:
 	return amount
+
+## Pass-through: nothing happens at turn start and the status is kept.
+static func on_turn_start(_fighter: Fighter, _stacks: int) -> bool:
+	return false

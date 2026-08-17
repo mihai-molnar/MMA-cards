@@ -7,6 +7,7 @@ func run(t: TestRunner) -> void:
 	_test_leg_injury_math(t)
 	_test_registry_dispatch(t)
 	_test_status_descriptions(t)
+	_test_turn_start_hook(t)
 
 func _test_leg_injury_math(t: TestRunner) -> void:
 	t.check_eq(LegInjuryStatus.modify_outgoing_damage(8, 1), 4, "leg injury halves 8 to 4")
@@ -62,3 +63,32 @@ func _test_registry_dispatch(t: TestRunner) -> void:
 
 	bag.apply(&"unregistered_status", 5, 2)
 	t.check_eq(StatusRegistry.modify_outgoing(bag, 8), 12, "unregistered status is ignored, not crashing")
+
+## The third mandatory status static: on_turn_start(fighter, stacks) -> bool,
+## called for every active status at its owner's turn start (after guard
+## expiry); returning true consumes the status. Prepared pays its stacks out
+## as guard exactly once; the damage-modifier statuses pass through.
+func _test_turn_start_hook(t: TestRunner) -> void:
+	var fighter := Fighter.new("A", 50)
+	fighter.statuses.apply(PreparedStatus.ID, 4, BattleConfig.PREPARED_STATUS_TURNS)
+	StatusRegistry.apply_turn_start(fighter)
+	t.check_eq(fighter.guard, 4, "prepared paid its stacks out as guard")
+	t.check(not fighter.statuses.has(PreparedStatus.ID), "prepared consumed itself")
+
+	StatusRegistry.apply_turn_start(fighter)
+	t.check_eq(fighter.guard, 4, "a second turn start pays nothing more")
+
+	# Pass-through statuses survive the hook untouched.
+	var buffed := Fighter.new("B", 50)
+	buffed.statuses.apply(&"strength", 2, 2)
+	buffed.statuses.apply(&"leg_injury", 1, 1)
+	StatusRegistry.apply_turn_start(buffed)
+	t.check(buffed.statuses.has(&"strength"), "strength is not consumed by turn start")
+	t.check(buffed.statuses.has(&"leg_injury"), "leg injury is not consumed by turn start")
+	t.check_eq(buffed.guard, 0, "pass-through statuses grant nothing")
+
+	# Registry metadata for the new status.
+	t.check_eq(StatusRegistry.display_name(PreparedStatus.ID), "Prepared", "display name registered")
+	t.check(not StatusRegistry.shows_turns(PreparedStatus.ID),
+		"prepared shows its magnitude (the pending guard), not a countdown")
+	t.check(StatusRegistry.description(PreparedStatus.ID).length() > 0, "prepared describes itself")
