@@ -434,8 +434,8 @@ above the End Turn button, right-aligned with it) — there are no "draw n"
 per-row silhouette clearance checks. A third icon, `BURNED_ICON_AT`, sits
 left of the discard icon and is visible only while `battle.deck.burned_pile`
 is non-empty (`update_fighters` toggles it and its count label together each
-refresh) — it wears the same `discarded_cards.png` texture, ember-tinted via
-`modulate`, a placeholder until burned-pile art exists. Its rect gets the
+refresh) — it wears its own `burned_cards.png` art (which replaced the
+ember-tinted discard-icon placeholder it shipped with). Its rect gets the
 same rotated-silhouette clearance check as the other two. The End Turn button is a
 `TextureButton` wearing the metal-plate art: normal texture at rest, the
 recessed "clicked" variant while held (the swap is the press animation).

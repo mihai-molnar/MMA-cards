@@ -151,10 +151,10 @@ func _build() -> void:
 	_discard_button = _make_pile_button(&"discarded_cards", DISCARD_ICON_AT, &"discard")
 	_discard_value = _make_icon_value(DISCARD_ICON_AT, PILE_ICON_SIZE)
 
-	# Placeholder art: the discard icon in an ember tint, until real burned-
-	# pile art exists. Hidden until something actually burns.
-	_burned_button = _make_pile_button(&"discarded_cards", BURNED_ICON_AT, &"burned")
-	_burned_button.modulate = Color(1.0, 0.55, 0.35)
+	# Real burned-pile art (it replaced the ember-tinted discard-icon
+	# placeholder the pile shipped with). Hidden until something actually
+	# burns.
+	_burned_button = _make_pile_button(&"burned_cards", BURNED_ICON_AT, &"burned")
 	_burned_button.visible = false
 	_burned_value = _make_icon_value(BURNED_ICON_AT, PILE_ICON_SIZE)
 	_burned_value.visible = false
