@@ -52,7 +52,7 @@ func _ready() -> void:
 ## input into until start() runs.
 func _start_fight() -> void:
 	var opponent: OpponentData = run.current_opponent()
-	battle = BattleState.new(0, opponent, run.player_hp)
+	battle = BattleState.new(0, opponent, run.player_hp, run.deck_ids)
 	_connect_battle()
 	hud.set_enemy_name(battle.enemy.display_name)
 	hand_view.clear()

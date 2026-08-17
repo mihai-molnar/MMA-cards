@@ -9,6 +9,7 @@ func run(t: TestRunner) -> void:
 	_test_completion(t)
 	_test_reset(t)
 	_test_hp_carries_into_the_next_battle(t)
+	_test_deck_persists_across_fights(t)
 
 func _test_fresh_run(t: TestRunner) -> void:
 	var run := RunState.new()
@@ -65,3 +66,29 @@ func _test_hp_carries_into_the_next_battle(t: TestRunner) -> void:
 	t.check_eq(second.player.statuses.get_stacks(StrengthStatus.ID), 0, "no statuses carry between fights")
 	t.check_eq(second.deck.total_cards(), 14, "the deck is rebuilt fresh")
 	t.check_eq(second.deck.hand.size(), BattleConfig.HAND_SIZE, "a fresh opening hand is drawn")
+
+## The deck is run state: it starts as DECK_COMPOSITION expanded, grows via
+## add_card (the rewards screen's only write), feeds each fight's
+## BattleState, and reset() restores the base deck.
+func _test_deck_persists_across_fights(t: TestRunner) -> void:
+	var run := RunState.new()
+	t.check_eq(run.deck_ids.size(), 14, "the run deck starts as the 14-card composition")
+
+	run.add_card(&"one_two")
+	t.check_eq(run.deck_ids.size(), 15, "a reward pick joins the run deck")
+
+	var battle := BattleState.new(9, null, -1, run.deck_ids)
+	t.check_eq(battle.deck.total_cards(), 15, "the next fight is built from the run deck")
+	var has_one_two: bool = false
+	for card: CardData in battle.deck.draw_pile:
+		if card.id == &"one_two":
+			has_one_two = true
+	t.check(has_one_two, "the picked card is actually in the fight's deck")
+
+	# The default (empty deck_ids) still builds the starting 14 -- every
+	# pre-run call site and test keeps working.
+	var plain := BattleState.new(9)
+	t.check_eq(plain.deck.total_cards(), 14, "empty deck_ids means the starting deck")
+
+	run.reset()
+	t.check_eq(run.deck_ids.size(), 14, "reset restores the base deck")

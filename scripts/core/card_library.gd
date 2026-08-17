@@ -16,12 +16,26 @@ static func load_card(card_id: StringName) -> CardData:
 	# Duplicate so every deck entry is an independent instance.
 	return (resource as CardData).duplicate(true)
 
-static func build_starting_deck() -> Array[CardData]:
-	var deck: Array[CardData] = []
+## DECK_COMPOSITION expanded to a flat id list -- the single source RunState
+## seeds its run deck from and build_starting_deck() builds from.
+static func starting_deck_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
 	for card_id: StringName in BattleConfig.DECK_COMPOSITION:
 		var copies: int = BattleConfig.DECK_COMPOSITION[card_id]
 		for _i: int in range(copies):
-			var card: CardData = load_card(card_id)
-			if card != null:
-				deck.append(card)
+			ids.append(card_id)
+	return ids
+
+## Loads a deck from an id list (the run's persistent deck). Unloadable ids
+## are skipped -- load_card already push_errors, which the test wrapper
+## treats as failure.
+static func build_deck(ids: Array[StringName]) -> Array[CardData]:
+	var deck: Array[CardData] = []
+	for card_id: StringName in ids:
+		var card: CardData = load_card(card_id)
+		if card != null:
+			deck.append(card)
 	return deck
+
+static func build_starting_deck() -> Array[CardData]:
+	return build_deck(starting_deck_ids())
