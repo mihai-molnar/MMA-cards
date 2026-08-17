@@ -382,17 +382,20 @@ func _test_burn_is_a_rule_keyword(t: TestRunner) -> void:
 	t.check(CardTemplate.keywords_in(prepared).has(&"prepared"),
 		"prepared's text names its own status keyword")
 
-## One-Two: both 5s are damage-red (the second sentence names "guard" only
-## as a condition; "damage" wins, checked first). Prepared: both 4s are
-## guard-blue.
+## One-Two: exactly one damage-red 5 -- the break sentence is a pure
+## condition with NO repeated number ("If it breaks guard, hits twice."),
+## because a printed second 5 read as a separate guard-breaking ability.
+## Prepared: both 4s are guard-blue.
 func _test_reward_card_number_colours(t: TestRunner) -> void:
 	var damage_html: String = CardTemplate.RULES_DAMAGE_COLOR.to_html(false)
 	var guard_html: String = CardTemplate.RULES_GUARD_COLOR.to_html(false)
 
 	var one_two: CardData = CardLibrary.load_card(&"one_two")
 	var one_two_bbcode: String = CardTemplate.rules_bbcode(one_two)
-	t.check_eq(one_two_bbcode.count("[color=#%s]%d[/color]" % [damage_html, BattleConfig.ONE_TWO_DAMAGE]), 2,
-		"both of one-two's 5s are damage-red")
+	t.check_eq(one_two_bbcode.count("[color=#%s]%d[/color]" % [damage_html, BattleConfig.ONE_TWO_DAMAGE]), 1,
+		"one-two prints its damage number exactly once, red")
+	t.check(one_two.rules_text.contains("hits twice"),
+		"the break sentence states the consequence as hitting twice, not a second number")
 
 	var prepared: CardData = CardLibrary.load_card(&"prepared")
 	var prepared_bbcode: String = CardTemplate.rules_bbcode(prepared)

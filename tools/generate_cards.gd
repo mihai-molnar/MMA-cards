@@ -111,11 +111,13 @@ func _make_one_two() -> CardData:
 	card.display_name = "ONE-TWO"
 	card.cost = BattleConfig.ONE_TWO_COST
 	card.tags = [&"attack"] as Array[StringName]
-	# Both 5s are damage numbers (red): _number_color checks "damage" before
-	# "guard", so the second sentence's number reads as the hit it is, not as
-	# a guard grant. The break rule itself lives in the effect.
-	card.rules_text = "Deal %d damage. Breaks guard: deal %d damage again." % [
-		BattleConfig.ONE_TWO_DAMAGE, BattleConfig.ONE_TWO_DAMAGE]
+	# One number only, in the damage sentence (red). The second sentence is a
+	# pure CONDITION -- "hits twice", no repeated 5 -- because an earlier
+	# wording ("Breaks guard: deal 5 damage again.") read as if the card had
+	# a guard-breaking ability rather than a conditional second hit, flagged
+	# by Mihai from play. The break rule itself lives in the effect.
+	card.rules_text = "Deal %d damage. If it breaks guard, hits twice." % \
+		BattleConfig.ONE_TWO_DAMAGE
 	var damage := DamageEffect.new()
 	damage.amount = BattleConfig.ONE_TWO_DAMAGE
 	var bonus := GuardBreakBonusEffect.new()

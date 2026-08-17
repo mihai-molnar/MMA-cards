@@ -22,4 +22,7 @@ func apply(source: Fighter, target: Fighter, context: Dictionary) -> void:
 	context["log"].append("%s breaks through for %d more damage" % [source.display_name, result.raw])
 
 func describe() -> String:
-	return "Breaks guard: deal %d damage again." % amount
+	# A condition, not an ability: "Breaks guard: deal N damage again." read
+	# as if the card broke guard by itself. No number here on purpose -- the
+	# second hit repeats the first, and a repeated 5 was the misread.
+	return "If it breaks guard, hits twice."

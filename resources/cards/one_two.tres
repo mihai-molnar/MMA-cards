@@ -20,4 +20,4 @@ display_name = "ONE-TWO"
 cost = 1
 tags = Array[StringName]([&"attack"])
 effects = Array[ExtResource("1_6q2x8")]([SubResource("Resource_q44p7"), SubResource("Resource_c0x0k")])
-rules_text = "Deal 5 damage. Breaks guard: deal 5 damage again."
+rules_text = "Deal 5 damage. If it breaks guard, hits twice."
