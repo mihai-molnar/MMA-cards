@@ -20,7 +20,7 @@ signal status_hovered(id: StringName, anchor: Vector2, hovered: bool)
 signal end_turn_hovered(anchor: Vector2, hovered: bool)
 ## Forwarded from both FighterPanels, like status_hovered.
 signal guard_hovered(anchor: Vector2, hovered: bool)
-## A pile icon was clicked: &"draw" or &"discard". BattleView opens the
+## A pile icon was clicked: &"draw", &"discard" or &"burned". BattleView opens the
 ## pile browser with the matching cards.
 signal pile_clicked(pile: StringName)
 
@@ -63,6 +63,14 @@ const PILE_ICON_SIZE: float = 56.0
 ## END_TURN_AT.x + END_TURN_SIZE.x).
 const DISCARD_ICON_AT: Vector2 = Vector2(1079, 461)
 
+## Left of the discard icon with a small gap (1079 - 56 - 14 = 1009).
+## Appears only while the burned pile is non-empty. Closer to the fan than
+## the discard icon, so test_hand_arc.gd checks the rotated silhouette
+## against THIS rect too -- at its rows the n=5 edge passes ~987, ~22px
+## clear. If a layout change ever pushes the edge past it, move this icon,
+## don't shave the check.
+const BURNED_ICON_AT: Vector2 = Vector2(1009, 461)
+
 var _stage: FightStage
 var _turn_label: Label
 var _intent_label: Label
@@ -70,6 +78,8 @@ var _draw_button: TextureButton
 var _draw_value: Label
 var _discard_button: TextureButton
 var _discard_value: Label
+var _burned_button: TextureButton
+var _burned_value: Label
 var _end_turn_button: TextureButton
 var _player_panel: FighterPanel
 var _enemy_panel: FighterPanel
@@ -140,6 +150,14 @@ func _build() -> void:
 	_draw_value = _make_icon_value(DRAW_ICON_AT, PILE_ICON_SIZE)
 	_discard_button = _make_pile_button(&"discarded_cards", DISCARD_ICON_AT, &"discard")
 	_discard_value = _make_icon_value(DISCARD_ICON_AT, PILE_ICON_SIZE)
+
+	# Placeholder art: the discard icon in an ember tint, until real burned-
+	# pile art exists. Hidden until something actually burns.
+	_burned_button = _make_pile_button(&"discarded_cards", BURNED_ICON_AT, &"burned")
+	_burned_button.modulate = Color(1.0, 0.55, 0.35)
+	_burned_button.visible = false
+	_burned_value = _make_icon_value(BURNED_ICON_AT, PILE_ICON_SIZE)
+	_burned_value.visible = false
 
 	# The metal-plate art: rest texture normally, the recessed "clicked"
 	# variant while held -- the swap IS the press animation. The art carries
@@ -277,11 +295,22 @@ func debug_draw_button() -> TextureButton:
 func debug_discard_button() -> TextureButton:
 	return _discard_button
 
+func debug_burned_button() -> TextureButton:
+	return _burned_button
+
+func debug_burned_text() -> String:
+	return _burned_value.text
+
 func update_fighters(battle: BattleState) -> void:
 	_player_panel.update(battle.player)
 	_enemy_panel.update(battle.enemy)
 	_draw_value.text = str(battle.deck.draw_pile.size())
 	_discard_value.text = str(battle.deck.discard_pile.size())
+
+	var burned_count: int = battle.deck.burned_pile.size()
+	_burned_button.visible = burned_count > 0
+	_burned_value.visible = burned_count > 0
+	_burned_value.text = str(burned_count)
 
 ## The larger of the two panels' most recent damage pulses, or 0 if neither
 ## took damage. Lets the view react to a hit without BattleState carrying a

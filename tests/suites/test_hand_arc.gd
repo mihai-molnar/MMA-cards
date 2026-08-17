@@ -10,6 +10,7 @@ func run(t: TestRunner) -> void:
 	_test_clear_of_draw_icon(t)
 	_test_clear_of_discard_icon(t)
 	_test_clear_of_ap_readout(t)
+	_test_clear_of_burned_icon(t)
 	_test_clear_hover(t)
 	_test_layout_invariants_across_hand_sizes(t)
 	_test_hand_size_ceiling(t)
@@ -143,6 +144,21 @@ func _test_clear_of_ap_readout(t: TestRunner) -> void:
 				row_y, left_edge, ap_right])
 	view.free()
 
+## The burned icon sits LEFT of the discard icon -- closer to the fan than
+## any other right-side control, so it gets the same per-row rotated-
+## silhouette clearance check.
+func _test_clear_of_burned_icon(t: TestRunner) -> void:
+	var view: HandView = _hand_with([&"jab", &"straight", &"jab", &"block", &"straight"])
+	var rightmost: CardView = view.get_child(view.get_child_count() - 1) as CardView
+	for row_y: float in [BattleHud.BURNED_ICON_AT.y, BattleHud.BURNED_ICON_AT.y + BattleHud.PILE_ICON_SIZE]:
+		var right_edge: float = HandView.rotated_right_edge_at_y(
+			rightmost.rest_position.x, rightmost.rest_position.y, rightmost.rest_rotation,
+			row_y)
+		t.check(right_edge < BattleHud.BURNED_ICON_AT.x,
+			"the fan stays clear of the burned icon at y %.0f (right edge %f)" % [
+				row_y, right_edge])
+	view.free()
+
 func _test_clear_hover(t: TestRunner) -> void:
 	var view: HandView = _hand_with([&"jab", &"straight"])
 	var card: CardView = view.get_child(0) as CardView
@@ -181,6 +197,12 @@ func _test_layout_invariants_across_hand_sizes(t: TestRunner) -> void:
 			BattleHud.END_TURN_AT.y)
 		t.check(right_edge < BattleHud.END_TURN_AT.x,
 			"hand of %d clears the End Turn button (right edge %f)" % [n, right_edge])
+
+		var burned_edge: float = HandView.rotated_right_edge_at_y(
+			rightmost.rest_position.x, rightmost.rest_position.y, rightmost.rest_rotation,
+			BattleHud.BURNED_ICON_AT.y)
+		t.check(burned_edge < BattleHud.BURNED_ICON_AT.x,
+			"hand of %d clears the burned icon (right edge %f)" % [n, burned_edge])
 
 		var leftmost: CardView = view.get_child(0) as CardView
 		var left_edge: float = HandView.rotated_left_edge_at_y(

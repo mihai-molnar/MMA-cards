@@ -184,6 +184,9 @@ func _on_pile_clicked(pile: StringName) -> void:
 	if pile == &"draw":
 		pile_view.open(battle.deck.draw_pile,
 			"DRAW PILE (%d)" % battle.deck.draw_pile.size())
+	elif pile == &"burned":
+		pile_view.open(battle.deck.burned_pile,
+			"BURNED (%d)" % battle.deck.burned_pile.size())
 	else:
 		pile_view.open(battle.deck.discard_pile,
 			"DISCARDED (%d)" % battle.deck.discard_pile.size())

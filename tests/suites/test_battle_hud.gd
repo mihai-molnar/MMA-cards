@@ -15,6 +15,7 @@ func run(t: TestRunner) -> void:
 	_test_guard_hover_forwarded(t)
 	_test_pile_readouts_are_icon_counts(t)
 	_test_pile_icons_are_clickable(t)
+	_test_burned_icon_appears_with_burned_cards(t)
 	_test_end_turn_button_texture_states(t)
 	_test_last_damage_side(t)
 	_test_last_absorb_amount(t)
@@ -250,4 +251,25 @@ func _test_last_absorb_amount(t: TestRunner) -> void:
 	hud.update_fighters(battle)
 	t.check_eq(hud.last_absorb_amount(), 0,
 		"a suppressed guard expiry does not read as an absorb")
+	hud.free()
+
+## The burned icon exists only while something is burned: hidden on a fresh
+## fight, shown with the count once a burn card is played, hidden again next
+## fight (a fresh battle has an empty burned pile).
+func _test_burned_icon_appears_with_burned_cards(t: TestRunner) -> void:
+	var hud := BattleHud.new()
+	var battle := BattleState.new(5)
+	battle.start()
+
+	hud.update_fighters(battle)
+	t.check(not hud.debug_burned_button().visible, "no burned cards, no icon")
+
+	var burned := CardData.new()
+	burned.id = &"strength_up"
+	burned.burn = true
+	battle.deck.burned_pile.append(burned)
+	hud.update_fighters(battle)
+	t.check(hud.debug_burned_button().visible, "a burned card shows the icon")
+	t.check_eq(hud.debug_burned_text(), "1", "the count renders inside the icon")
+
 	hud.free()
