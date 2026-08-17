@@ -11,6 +11,11 @@ extends Resource
 @export var tags: Array[StringName] = []
 @export var effects: Array[CardEffect] = []
 @export var rules_text: String = ""
+## When true, playing this card sends it to the deck's burned pile instead of
+## the discard: gone for the rest of the fight (it returns next fight, since
+## every fight builds a fresh deck). Burn triggers on PLAY only -- an
+## unplayed copy discards normally at end of turn.
+@export var burn: bool = false
 
 ## Base damage before any modifiers. Combo bonuses are computed from this, so
 ## it is derived from the effects rather than duplicated in a field.
