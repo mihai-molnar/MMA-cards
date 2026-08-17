@@ -1,9 +1,10 @@
 extends SceneTree
 
-## Renders the three cards exactly as CardView draws them and writes a
-## screenshot: a row of all three, plus the same Straight un-armed and
-## combo-armed side by side, laid out next to each other so both groups fit
-## on the project's 1152x648 base canvas.
+## Renders the card library exactly as CardView draws them and writes a
+## screenshot: row one is the five library/preview faces (see _add_row), row
+## two is the un-armed/combo-armed Straight pair plus the three reward cards
+## (One-Two, Strength Up, Prepared), laid out so both rows fit on the
+## project's 1152x648 base canvas.
 ##
 ## Card-face layout is geometry no test can check. An assertion that
 ## _type_label.position equals CardTemplate's zone proves the code did what
@@ -65,7 +66,9 @@ func _run() -> void:
 	print("wrote %s" % OUTPUT)
 	quit(0)
 
-## The same Straight, un-armed then combo-armed, side by side.
+## The same Straight, un-armed then combo-armed, side by side, plus the
+## three reward cards sharing row two: the row is 420 (pair) + 20 +
+## 640 (3 cards) = 1080px of content, the same width as row one.
 ##
 ## set_combo_armed() tints the FRAME, which is already gold -- so "does the gold
 ## get golder" is a question a single card cannot answer and a description
@@ -85,6 +88,16 @@ func _add_combo_row(origin: Vector2) -> void:
 		# target_position, never position -- see the note in _add_row().
 		view.target_position = Vector2(i * (CardView.CARD_SIZE.x + GAP), 0.0)
 		row.add_child(view)
+
+	# The three reward cards, sharing row two with the combo pair: the row is
+	# 420 + 20 + 640 = 1080px of content, the same width as row one.
+	var x: float = 2.0 * (CardView.CARD_SIZE.x + GAP)
+	for card_id: StringName in [&"one_two", &"strength_up", &"prepared"]:
+		var view: CardView = CardView.create(CardLibrary.load_card(card_id))
+		# target_position, never position -- see the note in _add_row().
+		view.target_position = Vector2(x, 0.0)
+		row.add_child(view)
+		x += CardView.CARD_SIZE.x + GAP
 
 func _add_row(origin: Vector2) -> void:
 	var row := Control.new()

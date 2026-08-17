@@ -1,10 +1,12 @@
 # mma-cards
 
 Slay the Spire-inspired MMA card battler. Godot 4.5.1, typed GDScript.
-Currently a two-fight run: 14-card deck, 3 AP per turn, jab->straight combo,
-guard, strength, telegraphed enemy intent, HP carried between fights. Fight
-1 is the Brawler, fight 2 the harder Kickboxer (who mirrors Low Kick's Leg
-Injury back at the player).
+Currently a two-fight run: 14-card starting deck, 3 AP per turn,
+jab->straight combo, guard, strength, telegraphed enemy intent, HP carried
+between fights. Beating fight 1 offers a card reward (One-Two, Strength Up
+or Prepared, or skip) before fight 2, so the deck the player fights with can
+grow past 14. Fight 1 is the Brawler, fight 2 the harder Kickboxer (who
+mirrors Low Kick's Leg Injury back at the player).
 
 ## Commands
 
@@ -20,7 +22,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `942 checks, 0 failures` / `PASS`.
+on a clean tree ends with `1190 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -105,10 +107,16 @@ system is being bypassed.
 `true` for a countdown like Leg Injury's remaining turns, `false` for a
 magnitude like strength stacks), a `description()` static (the hover
 tooltip's body — derive its numbers from `BattleConfig`, never literals),
-and **both** `modify_outgoing_damage(amount, stacks)` and
-`modify_incoming_damage(amount, stacks)` as statics — pass-through if
-unused, since `StatusRegistry` calls both unconditionally. Then add one
-line to `StatusRegistry.DEFINITIONS`. The damage pipeline needs no changes.
+and **all three** `modify_outgoing_damage(amount, stacks)`,
+`modify_incoming_damage(amount, stacks)` and
+`on_turn_start(fighter, stacks) -> bool` as statics — pass-through
+(`return amount` / `return false`) if unused, since `StatusRegistry` calls
+all three unconditionally. `on_turn_start` fires at its owner's turn start,
+right after that turn's guard expiry (see "Timing rules" below); returning
+`true` consumes the status (removes it from the bag) instead of leaving it
+to tick down normally — Prepared's delayed-guard payout is the only status
+that does this today. Then add one line to `StatusRegistry.DEFINITIONS`.
+The damage pipeline needs no changes.
 Optionally drop an icon at `assets/icons/<status_id>.png` — the status's
 chip in FighterPanel's status area (a bordered dark badge under the health
 readout, one chip per active status, hover-tooltipped via
@@ -139,19 +147,23 @@ card, that is exactly the stale-number trap the keyword exists to avoid.
 **Change balance:** everything tunable is in `scripts/core/battle_config.gd`.
 No magic numbers anywhere else. But the constants are not uniformly live:
 - `JAB_COST`, `JAB_DAMAGE`, `STRAIGHT_COST`, `STRAIGHT_DAMAGE`, `BLOCK_COST`,
-  `BLOCK_GUARD` are baked into `resources/cards/*.tres` by
-  `tools/generate_cards.gd` at generation time. Editing one of these does
-  **nothing** to the running game until you re-run the generator (see
-  Commands above). `tests/suites/test_card_library.gd` asserts the loaded
-  `.tres` values against these constants, so a forgotten regen now fails the
-  suite instead of silently doing nothing.
+  `BLOCK_GUARD`, `ONE_TWO_COST`, `ONE_TWO_DAMAGE`, `STRENGTH_UP_COST`,
+  `STRENGTH_UP_STACKS`, `PREPARED_COST` and `PREPARED_GUARD` are baked into
+  `resources/cards/*.tres` by `tools/generate_cards.gd` at generation time.
+  Editing one of these does **nothing** to the running game until you
+  re-run the generator (see Commands above). `tests/suites/test_card_library.gd`
+  asserts the loaded `.tres` values against these constants, so a forgotten
+  regen now fails the suite instead of silently doing nothing.
 - Every other constant (combo ratio, strength scaling, AP, hand size, HP) is
   read directly at battle time and takes effect immediately — no regen step
   needed. That includes every `BRAWLER_*`, `KICKBOXER_*` and
   `RUN_OPPONENTS` constant: `OpponentLibrary` reads them straight from
   `BattleConfig` with no `.tres`/generator step of its own. The old
   `ENEMY_*` constants are gone — enemy behavior is per-opponent now, not
-  a single shared enemy.
+  a single shared enemy. `PREPARED_STATUS_TURNS` (the status's lifecycle
+  ceiling, not a balance knob — see its comment in `battle_config.gd`) and
+  `REWARD_CARDS` (the rewards screen's pool, read by `RewardPool.options()`)
+  are both live-read too, same as `RUN_OPPONENTS`.
 
 ## Card art
 
@@ -219,10 +231,13 @@ render inline colour). Each number is coloured by the sentence it sits in —
 "damage" goes red, "guard"/"block" blue, a sentence naming a status keeps
 its numbers plain (a duration is not damage), and a sentence naming nothing
 falls back to the card's variant. Keywords are every registered status's
-`DISPLAY_NAME` plus `COMBO_KEYWORD` — the one game-rule keyword with no
-status behind it, whose tooltip body is `ComboRule.keyword_description()`
+`DISPLAY_NAME` plus two game-rule keywords with no status behind them:
+`COMBO_KEYWORD`, whose tooltip body is `ComboRule.keyword_description()`
 (the ratio derived from `COMBO_BONUS_RATIO`, so a rebalance cannot strand a
-stale number; the card itself prints no bonus number at all). Matching is
+stale number; the card itself prints no bonus number at all), and
+`BURN_KEYWORD`, whose tooltip body is `Deck.burn_description()` (kept
+beside the mechanic it describes, in core, like every other keyword body).
+Matching is
 word-bounded and case-insensitive so STR never fires inside STRAIGHT. Any
 card whose text names a keyword gets the `StatusTooltip` above it on hover.
 The colour tags add no visible characters, so the wrap tests measure
@@ -242,10 +257,16 @@ card whenever `BattleView` refreshes (ap, fighters, hand changes), and
 called with `null`s the output is byte-identical to the un-previewed
 render — pinned by `test_card_preview.gd`. The qualification: a preview
 *replaces* the number's text, so a previewed face can render text the
-`rules_plain()` wrap tests do not model. Today previews only shrink
-numbers (the player has no strength source); the day a source-side buff
-can widen one ("9" → "11"), the painted-panel wrap tests stop covering
-the previewed face and need a preview-aware case.
+`rules_plain()` wrap tests do not model. Now that Strength Up gives the
+player a buff source, a previewed number CAN widen ("9" → "13"), and the
+plain-text wrap tests no longer cover that face —
+`_test_rules_lines_fit_with_buffed_previews`
+(`tests/suites/test_card_template.gd`) is the preview-aware case: it wraps
+each card's `rules_bbcode()` output (tags stripped) at the player pumped to
+`BattleConfig.STRENGTH_UP_STACKS` — the maximum reachable in a fight
+today, one Strength Up — and asserts it against the painted panel the same
+way the plain-text test does. Raising the reachable stacks (a second
+Strength Up copy, a bigger reward) must widen this test's assumption too.
 
 **Geometry and typography live in `scripts/ui/card_template.gd`**, as zones
 normalized to 0-1 fractions of the card rect rather than pixels — `CARD_SIZE`
@@ -298,9 +319,11 @@ render:
   --script res://tools/capture_cards.gd
 ```
 
-writes `/tmp/card-faces.png` with a row of all four library cards plus an
-armed/un-armed Straight pair on a second row beneath (to judge the combo
-tint below), laid out to fit the project's 1152x648 base canvas. No extra zoom row is needed: at
+writes `/tmp/card-faces.png` with row one the four library cards plus a
+fifth leg-injured preview of Jab, and row two the armed/un-armed Straight
+pair (to judge the combo tint below) sharing its width with the three
+reward cards (One-Two, Strength Up, Prepared), laid out to fit the
+project's 1152x648 base canvas. No extra zoom row is needed: at
 that canvas size, `window/stretch/mode="canvas_items"` over the 2560x1440
 window already renders the capture at 2560/1152 = 2.222x, so a 200x300 card
 lands as roughly 444x667 real pixels in the PNG. Run it **non-headless** —
@@ -340,6 +363,14 @@ by "tidying":
 - **Guard expires at its owner's turn START**, so it survives the opponent's
   turn. Expiring it at the owner's own turn end would make Block a dead card
   (it would never block anything).
+- **Turn-start status hooks fire right after that guard expiry**, before
+  anything else in `_begin_player_turn`/`_run_enemy_turn`
+  (`StatusRegistry.apply_turn_start`, called on both sides). This is what
+  lets Prepared's delayed guard land on a clean slate: the old guard is
+  already gone by the time the hook grants the new amount, so the payout
+  never stacks on leftovers. A hook returning `true` (only Prepared today)
+  is consumed exactly once — the status is removed the same turn it pays
+  out, so the chip disappears rather than lingering at 0.
 - **Status timers decrement at their owner's turn END.** The enemy's 2-turn
   strength buff is therefore live during both the buff turn and the following
   attack, then expires — exactly one attack gets the bonus.
@@ -394,7 +425,12 @@ silhouette clears it at both of the icon's rows. The pile counts render
 centred INSIDE their icons (`cards.png` bottom-left, `discarded_cards.png`
 above the End Turn button, right-aligned with it) — there are no "draw n"
 / "discard n" text labels any more, and both icon rects get the same
-per-row silhouette clearance checks. The End Turn button is a
+per-row silhouette clearance checks. A third icon, `BURNED_ICON_AT`, sits
+left of the discard icon and is visible only while `battle.deck.burned_pile`
+is non-empty (`update_fighters` toggles it and its count label together each
+refresh) — it wears the same `discarded_cards.png` texture, ember-tinted via
+`modulate`, a placeholder until burned-pile art exists. Its rect gets the
+same rotated-silhouette clearance check as the other two. The End Turn button is a
 `TextureButton` wearing the metal-plate art: normal texture at rest, the
 recessed "clicked" variant while held (the swap is the press animation).
 The plate carries no words, so hovering it emits
@@ -405,8 +441,9 @@ decisions and `suppress_next_guard_pulse()` machinery survive unchanged
 Every label drawn over the portraits is styled by `HudText.style` (Kreon,
 white fill, black outline — the fighting-game legibility standard).
 
-**The pile browser.** The draw/discard icons are `TextureButton`s (pointer
-cursor); clicking one emits `BattleHud.pile_clicked` and `BattleView` opens
+**The pile browser.** The draw/discard/burned icons are `TextureButton`s
+(pointer cursor); clicking one emits `BattleHud.pile_clicked` with the
+matching id (`&"draw"`, `&"discard"` or `&"burned"`) and `BattleView` opens
 `PileView` (`scripts/ui/pile_view.gd`): a modal full-rect overlay -- the
 dimmed octagon as backdrop, the pile's cards as real `CardView`s in a
 centred grid, and the close-button art (normal + clicked variants, the
@@ -426,6 +463,31 @@ flips BELOW the zoomed card when the top leaves no room above
 puts hovered cards over their own tooltips. `close()` emits (BattleView
 plays the click and clears the tooltip); `dismiss()` is the silent
 variant for fight transitions, so no click plays over the slam.
+
+**The rewards screen.** Winning a mid-run fight no longer goes straight to
+the next one: `BattleHud`'s result banner still shows CONTINUE, but
+`BattleView._on_continue_pressed` now hides that banner and opens
+`RewardsView` (`scripts/ui/rewards_view.gd`) instead of starting the fight
+directly. Modelled on `PileView` -- a full-rect modal overlay with real
+`CardView`s -- but sized for three cards instead of a grid: the offered
+ids (`RewardPool.options()`, today the whole of `BattleConfig.REWARD_CARDS`
+every time) render at `CARD_REST_SCALE`, and clicking one selects it,
+re-using `set_combo_armed()`'s frame tint as the "this card is charged"
+read -- proven legible on both colourways already -- plus a bigger
+`SELECTED_SCALE`, so the chosen card sits visibly proud of its neighbours.
+CONTINUE stays disabled until something is selected; SKIP always works.
+Either choice emits `finished(card_id)` (`card_id` empty on skip), and
+`BattleView._on_rewards_finished` is the only writer to `RunState`:
+`run.add_card(card_id)` when non-empty, then the same
+`_suppress_transition_guard_pulses()` + `_start_fight()` Continue used to
+call directly -- so the flow is Continue -> rewards -> next fight, and a
+skip still advances. Same z-cake reasoning as `PileView.PILE_Z`:
+`RewardsView.REWARDS_Z` is 10, so a hovered reward card lands at
+10 + HOVER_Z(50) = 60, under the tooltip's 70 -- this is where the player
+first reads Burn, STR and Prepared, so the keyword tooltips have to win.
+Continue/Skip are plain `Button`s on purpose, placeholder until real
+button art exists (the End Turn plate treatment is the model to follow
+then).
 
 One Godot trap the stage taught: on a `TextureRect`, set `stretch_mode`/
 `expand_mode` BEFORE `position`/`size`. `Control.set_size()` clamps against
@@ -674,15 +736,25 @@ won during implementation and the spec was usually amended, but not always.
 
 ## State of the project
 
-Playable two-fight run (Brawler then Kickboxer, HP carried between fights),
-fully art-directed down to the fight screen itself (portrait fight stage
-with a slam intro, icon readouts, outlined HUD text), sound effects on
-every battle beat (see "Sound" under Game feel), 942 headless checks.
+Playable two-fight run (Brawler then Kickboxer, HP carried between fights)
+WITH a card reward -- One-Two, Strength Up or Prepared, or skip -- offered
+between them, fully art-directed down to the fight screen itself (portrait
+fight stage with a slam intro, icon readouts, outlined HUD text), sound
+effects on every battle beat (see "Sound" under Game feel), 1190 headless
+checks. `RunState.deck_ids` persists the run's deck across fights -- a
+reward pick joins it and every fresh `BattleState` is built from it, so a
+card taken after fight 1 is in the pool (and can be drawn, played, or
+burned) for fight 2. Burn is a fourth deck pile alongside draw/hand/discard:
+a burned card (Strength Up today) leaves play for the rest of the *fight*
+only -- `Deck.reset()` empties the burned pile at the next fight, so a
+burned card is back in the pool next time, same as any other reward card.
 What is conspicuously still placeholder:
 
 - **No music, and the sound palette is minimal.** One click for all UI, no
   sound on playing Block itself (a fully blocked incoming hit does slap),
   no result-banner stinger, no crowd bed.
-- **No map, no deck-building, no card rewards.** The run is a fixed two-fight
-  sequence; `RunState.current_opponent()` is the seam a branching map would
-  replace.
+- **No map, no deck-building beyond the single reward pick, no random
+  reward pools.** The run is a fixed two-fight sequence and every reward
+  screen offers the same three cards; `RunState.current_opponent()` and
+  `RewardPool.options()` are the seams a branching map and a larger random
+  pool would replace.
