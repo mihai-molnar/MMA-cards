@@ -230,22 +230,36 @@ static func keywords_in(card: CardData) -> Array[StringName]:
 ## resolve through keyword_title()/keyword_description() below.
 const COMBO_KEYWORD: StringName = &"combo"
 
+## The burn mechanic's keyword id. Like Combo, a game-rule keyword with no
+## status behind it: its title and description resolve through
+## keyword_title()/keyword_description(), the body from Deck (core), beside
+## the rule it describes.
+const BURN_KEYWORD: StringName = &"burn"
+
 static func _keyword_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for id: StringName in StatusRegistry.DEFINITIONS:
 		ids.append(id)
 	ids.append(COMBO_KEYWORD)
+	ids.append(BURN_KEYWORD)
 	return ids
 
 ## The word printed on cards and as the tooltip's heading.
 static func keyword_title(id: StringName) -> String:
-	return "Combo" if id == COMBO_KEYWORD else StatusRegistry.display_name(id)
+	if id == COMBO_KEYWORD:
+		return "Combo"
+	if id == BURN_KEYWORD:
+		return "Burn"
+	return StatusRegistry.display_name(id)
 
 ## The tooltip's body: statuses describe themselves via the registry; the
-## combo keyword via the rule it names.
+## rule keywords via the rule they name.
 static func keyword_description(id: StringName) -> String:
-	return ComboRule.keyword_description() if id == COMBO_KEYWORD \
-		else StatusRegistry.description(id)
+	if id == COMBO_KEYWORD:
+		return ComboRule.keyword_description()
+	if id == BURN_KEYWORD:
+		return Deck.burn_description()
+	return StatusRegistry.description(id)
 
 ## Case-insensitive, word-bounded matcher for a keyword's display word. The
 ## words are plain ("Leg Injury", "STR", "Combo"); if one ever gains a regex

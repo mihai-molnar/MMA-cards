@@ -7,6 +7,7 @@ func run(t: TestRunner) -> void:
 	_test_injured_source_halves_the_previewed_damage(t)
 	_test_healthy_source_matches_todays_output(t)
 	_test_card_view_update_rules_preview(t)
+	_test_one_two_previews_both_hits(t)
 
 ## The null-source form (every existing caller/test) must render byte-for-
 ## byte identical to what CardTemplate.rules_bbcode(card) always produced --
@@ -55,3 +56,23 @@ func _test_card_view_update_rules_preview(t: TestRunner) -> void:
 	t.check_eq(view._rules_label.text, CardTemplate.rules_bbcode(view.card, injured, target),
 		"update_rules_preview re-sets the rules label to the live-preview bbcode")
 	view.free()
+
+## One-Two has a sole DamageEffect (the bonus is a GuardBreakBonusEffect,
+## not a DamageEffect), so the preview machinery applies. BOTH printed 5s
+## match the effect's base amount, so BOTH get replaced -- and that is
+## CORRECT, not a bug to fix: the bonus hit resolves through the same
+## pipeline with the same base, so one previewed value is true for both.
+func _test_one_two_previews_both_hits(t: TestRunner) -> void:
+	var one_two: CardData = CardLibrary.load_card(&"one_two")
+	var strong := Fighter.new("Strong", 50)
+	strong.statuses.apply(&"strength", 2, BattleConfig.STATUS_PERMANENT)
+	var target := Fighter.new("Target", 50)
+
+	var bbcode: String = CardTemplate.rules_bbcode(one_two, strong, target)
+	var boosted: int = Combat.preview_damage(BattleConfig.ONE_TWO_DAMAGE, strong, target)
+	t.check_eq(boosted, 7, "2 strength stacks boost 5 to floori(5 * 1.5) = 7")
+	t.check_eq(bbcode.count("]%d[" % boosted), 2, "both hits preview the boosted value")
+	t.check(not bbcode.contains("]%d[" % BattleConfig.ONE_TWO_DAMAGE),
+		"the base 5 no longer appears as a coloured span")
+	t.check(not bbcode.contains(CardTemplate.RULES_WEAKENED_COLOR.to_html(false)),
+		"a BUFFED number stays damage-red -- weakened orange is for reductions only")

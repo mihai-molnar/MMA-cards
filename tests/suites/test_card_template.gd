@@ -14,6 +14,9 @@ func run(t: TestRunner) -> void:
 	_test_rules_bbcode_colors_status_keywords(t)
 	_test_rules_bbcode_word_boundary_ignores_block_inside_unblocked(t)
 	_test_keywords_are_found_by_word_boundary(t)
+	_test_burn_is_a_rule_keyword(t)
+	_test_reward_card_number_colours(t)
+	_test_rules_lines_fit_with_buffed_previews(t)
 	_test_pixel_conversion(t)
 
 ## The frame is drawn OVER the illustration, and its art opening is not a
@@ -295,7 +298,7 @@ func _test_rules_lines_fit_the_painted_panel(t: TestRunner) -> void:
 	# genuinely off the panel.
 	const EDGE_TOLERANCE: float = 0.03
 
-	for card_id: StringName in [&"jab", &"straight", &"block"]:
+	for card_id: StringName in [&"jab", &"straight", &"block", &"low_kick", &"one_two", &"strength_up", &"prepared"]:
 		var card: CardData = CardLibrary.load_card(card_id)
 		# Each card is checked against the frame it actually wears.
 		var image: Image = _frame_image(
@@ -359,6 +362,78 @@ func _widest_panel_run(image: Image, y: int) -> Array:
 	if best_start == -1:
 		return [0.0, 0.0]
 	return [float(best_start) / float(width), float(best_start + best_length) / float(width)]
+
+## Burn is the second rule-keyword after Combo: no status behind it, its
+## tooltip body lives beside the rule in Deck.burn_description().
+func _test_burn_is_a_rule_keyword(t: TestRunner) -> void:
+	t.check_eq(CardTemplate.keyword_title(CardTemplate.BURN_KEYWORD), "Burn", "the keyword's word")
+	t.check_eq(CardTemplate.keyword_description(CardTemplate.BURN_KEYWORD), Deck.burn_description(),
+		"the tooltip body comes from the rule's own description")
+
+	var strength_up: CardData = CardLibrary.load_card(&"strength_up")
+	var keywords: Array[StringName] = CardTemplate.keywords_in(strength_up)
+	t.check(keywords.has(CardTemplate.BURN_KEYWORD), "strength up's text names Burn")
+	t.check(keywords.has(&"strength"), "strength up's text names STR")
+	var bbcode: String = CardTemplate.rules_bbcode(strength_up)
+	t.check(bbcode.contains("[color=#%s]Burn[/color]" % CardTemplate.RULES_KEYWORD_COLOR.to_html(false)),
+		"Burn renders keyword-yellow")
+
+	var prepared: CardData = CardLibrary.load_card(&"prepared")
+	t.check(CardTemplate.keywords_in(prepared).has(&"prepared"),
+		"prepared's text names its own status keyword")
+
+## One-Two: both 5s are damage-red (the second sentence names "guard" only
+## as a condition; "damage" wins, checked first). Prepared: both 4s are
+## guard-blue.
+func _test_reward_card_number_colours(t: TestRunner) -> void:
+	var damage_html: String = CardTemplate.RULES_DAMAGE_COLOR.to_html(false)
+	var guard_html: String = CardTemplate.RULES_GUARD_COLOR.to_html(false)
+
+	var one_two: CardData = CardLibrary.load_card(&"one_two")
+	var one_two_bbcode: String = CardTemplate.rules_bbcode(one_two)
+	t.check_eq(one_two_bbcode.count("[color=#%s]%d[/color]" % [damage_html, BattleConfig.ONE_TWO_DAMAGE]), 2,
+		"both of one-two's 5s are damage-red")
+
+	var prepared: CardData = CardLibrary.load_card(&"prepared")
+	var prepared_bbcode: String = CardTemplate.rules_bbcode(prepared)
+	t.check_eq(prepared_bbcode.count("[color=#%s]%d[/color]" % [guard_html, BattleConfig.PREPARED_GUARD]), 2,
+		"both of prepared's 4s are guard-blue")
+
+## The preview-aware wrap case CLAUDE.md reserved: the player can now BUFF
+## (Strength Up), so a previewed damage number can be WIDER than its base
+## ("9" -> "13"). The plain-text wrap tests measure rules_plain() and no
+## longer model a buffed face -- this one wraps the PREVIEWED text (bbcode
+## with the colour tags stripped; the tags add no visible characters) at the
+## maximum reachable player strength: STRENGTH_UP_STACKS, one Strength Up
+## per fight today. Raising the reachable stacks must widen this test too.
+func _test_rules_lines_fit_with_buffed_previews(t: TestRunner) -> void:
+	const EDGE_TOLERANCE: float = 0.03
+	var strong := Fighter.new("Strong", 50)
+	strong.statuses.apply(&"strength", BattleConfig.STRENGTH_UP_STACKS, BattleConfig.STATUS_PERMANENT)
+	var target := Fighter.new("Target", 50)
+	var tag_pattern: RegEx = RegEx.create_from_string("\\[/?color[^\\]]*\\]")
+
+	for card_id: StringName in [&"jab", &"straight", &"low_kick", &"one_two"]:
+		var card: CardData = CardLibrary.load_card(card_id)
+		var previewed_plain: String = tag_pattern.sub(
+			CardTemplate.rules_bbcode(card, strong, target), "", true)
+		var image: Image = _frame_image(
+			CardTemplate.frame_name(CardTemplate.variant_for(card)))
+		var height: int = image.get_height()
+		var zone_width_px: float = CardTemplate.RULES_ZONE.size.x * CARD_SIZE.x
+		var rects: Array[Rect2] = _line_rects(_wrapped_lines(previewed_plain, zone_width_px))
+		for rect: Rect2 in rects:
+			for frac_y: float in [rect.position.y + 0.004, rect.get_center().y, rect.end.y - 0.004]:
+				var y: int = mini(int(frac_y * float(height)), height - 1)
+				var run: Array = _widest_panel_run(image, y)
+				t.check(run[1] > run[0],
+					"%s buffed: row %.3f has a wide painted-panel run" % [card_id, frac_y])
+				if run[1] <= run[0]:
+					continue
+				t.check(run[0] <= rect.position.x + EDGE_TOLERANCE,
+					"%s buffed: panel covers the line's left edge at row %.3f" % [card_id, frac_y])
+				t.check(run[1] >= rect.end.x - EDGE_TOLERANCE,
+					"%s buffed: panel covers the line's right edge at row %.3f" % [card_id, frac_y])
 
 func _test_pixel_conversion(t: TestRunner) -> void:
 	var size := Vector2(200.0, 300.0)
