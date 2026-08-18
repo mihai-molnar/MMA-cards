@@ -14,6 +14,11 @@ extends CardEffect
 ## Combat.DamageResult in context["results"]; no preceding result means no
 ## application (fail closed).
 @export var require_hp_damage: bool = false
+## Probability the status lands at all, rolled on context["rng"]
+## (BattleState's seeded per-battle RNG). 1.0 -- the default, and every
+## pre-existing card -- never rolls and never touches the rng, so contexts
+## built without one keep working.
+@export var chance: float = 1.0
 
 func apply(source: Fighter, target: Fighter, context: Dictionary) -> void:
 	var recipient: Fighter = source if target_self else target
@@ -22,6 +27,13 @@ func apply(source: Fighter, target: Fighter, context: Dictionary) -> void:
 		var last_result: Combat.DamageResult = results.back() if not results.is_empty() else null
 		if last_result == null or last_result.hp_loss <= 0:
 			context["log"].append("%s blocks the %s" % [
+				recipient.display_name, StatusRegistry.display_name(status_id)
+			])
+			return
+	if chance < 1.0:
+		var rng: RandomNumberGenerator = context.get("rng")
+		if rng == null or rng.randf() >= chance:
+			context["log"].append("%s shrugs off the %s" % [
 				recipient.display_name, StatusRegistry.display_name(status_id)
 			])
 			return

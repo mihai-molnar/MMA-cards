@@ -9,6 +9,7 @@ const DEFINITIONS: Dictionary = {
 	&"strength": preload("res://scripts/core/statuses/strength.gd"),
 	&"leg_injury": preload("res://scripts/core/statuses/leg_injury.gd"),
 	&"prepared": preload("res://scripts/core/statuses/prepared.gd"),
+	&"bleed": preload("res://scripts/core/statuses/bleed.gd"),
 }
 
 static func modify_outgoing(bag: StatusBag, amount: int) -> int:

@@ -49,6 +49,26 @@ const PREPARED_GUARD: int = 4
 ## real lifecycle; this is the belt-and-braces bound. Not a balance knob.
 const PREPARED_STATUS_TURNS: int = 2
 
+## KO cards: reward-pool attacks that can end the fight on the spot. The
+## chance only rolls when the hit deals hp damage past guard -- the rule
+## lives in KOChanceEffect. Cost/damage/chance are BAKED into the .tres
+## files -- re-run tools/generate_cards.gd after editing.
+const HIGH_KICK_COST: int = 3
+const HIGH_KICK_DAMAGE: int = 11
+const HIGH_KICK_KO_CHANCE: float = 0.30
+const FLYING_KNEE_COST: int = 2
+const FLYING_KNEE_DAMAGE: int = 8
+const FLYING_KNEE_KO_CHANCE: float = 0.20
+const ELBOW_COST: int = 1
+const ELBOW_DAMAGE: int = 4
+const ELBOW_KO_CHANCE: float = 0.10
+const ELBOW_BLEED_CHANCE: float = 0.50
+## Bleed: damage at the bleeding fighter's turn start, straight to hp
+## (guard does not absorb it), for BLEED_TURNS turns. Live-read like every
+## status constant -- no regen step.
+const BLEED_DAMAGE_PER_TURN: int = 2
+const BLEED_TURNS: int = 3
+
 const BRAWLER_MAX_HP: int = 48
 const BRAWLER_ATTACK_DAMAGE: int = 8
 const BRAWLER_GUARD_AMOUNT: int = 8

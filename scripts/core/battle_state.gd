@@ -21,6 +21,12 @@ signal card_played(card: CardData, combo_bonus: int)
 ## itself is already at its final state -- this is presentation information,
 ## not a second mutation.
 signal follow_up_hit(hp_loss: int, absorbed: int)
+## A play attempted a KO roll (a KOChanceEffect whose hit dealt hp damage).
+## Exactly one of these fires per attempt, BEFORE fighters_changed -- the
+## view binds the splash into the same deferred update, like follow_up_hit.
+## On a scored KO, battle_over(true) still follows at the end of the play.
+signal ko_scored()
+signal ko_failed()
 signal fighters_changed()
 signal intent_changed(text: String)
 signal log_line(text: String)
@@ -33,10 +39,14 @@ var brain: EnemyBrain
 var turn_number: int = 0
 var ap: int = 0
 var is_over: bool = false
+## True when the current battle ended by a scored KO rather than hp reaching
+## zero. Cleared by start().
+var won_by_ko: bool = false
 
 var _combo_rules: Array[ComboRule] = []
 var _play_history: Array[CardData] = []
 var _rng_seed: int = 0
+var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 ## `opponent` null means the first opponent of the run -- every pre-run call
 ## site (and test) that wrote BattleState.new() or BattleState.new(seed)
@@ -48,6 +58,10 @@ var _rng_seed: int = 0
 func _init(rng_seed: int = 0, opponent: OpponentData = null, starting_hp: int = -1,
 		deck_ids: Array[StringName] = []) -> void:
 	_rng_seed = rng_seed
+	if rng_seed != 0:
+		_rng.seed = rng_seed
+	else:
+		_rng.randomize()
 	var chosen: OpponentData = opponent if opponent != null else OpponentLibrary.opponent(BattleConfig.RUN_OPPONENTS[0])
 	player = Fighter.new("Player", BattleConfig.PLAYER_MAX_HP)
 	if starting_hp > 0:
@@ -61,6 +75,7 @@ func _init(rng_seed: int = 0, opponent: OpponentData = null, starting_hp: int = 
 
 func start() -> void:
 	is_over = false
+	won_by_ko = false
 	turn_number = 0
 	_begin_player_turn()
 
@@ -95,12 +110,30 @@ func play_card(index: int) -> bool:
 	var bonus: int = combo_bonus_for(index)
 	var card: CardData = deck.take_from_hand(index)
 	ap -= card.cost
+	_resolve_play(card, bonus, true)
+	return true
 
-	var context: Dictionary = {"bonus_damage": bonus, "results": [], "log": []}
+## DEV ONLY (the backquote dev menu): plays `card` against the enemy with no
+## AP cost and no hand involvement, through the exact same resolve path as
+## play_card, so KO, Bleed and every signal fire normally. The card is a
+## fresh instance outside the deck's piles -- the deck invariant is
+## untouched. Guarded like end_turn: nothing plays before start() opens
+## turn 1 or after the fight ends.
+func dev_play(card: CardData) -> void:
+	if is_over or turn_number == 0 or card == null:
+		return
+	_resolve_play(card, 0, false)
+
+## The shared back half of a play: applies `card`'s effects player->enemy,
+## announces everything, and settles KO / battle-over. `record_history` is
+## true for a real hand play (combo history) and false for dev_play.
+func _resolve_play(card: CardData, bonus: int, record_history: bool) -> void:
+	var context: Dictionary = {"bonus_damage": bonus, "results": [], "log": [], "rng": _rng}
 	for effect: CardEffect in card.effects:
 		effect.apply(player, enemy, context)
 
-	_play_history.append(card)
+	if record_history:
+		_play_history.append(card)
 	_emit_log(context)
 
 	# Two damage results means a follow-up hit landed (today: One-Two through
@@ -110,6 +143,16 @@ func play_card(index: int) -> bool:
 	if results.size() == 2:
 		var second: Combat.DamageResult = results[1]
 		follow_up_hit.emit(second.hp_loss, second.absorbed)
+
+	# A KO attempt is announced the same way -- before fighters_changed --
+	# so the view lands the splash with the hit. The fight itself ends at
+	# the bottom of this function, where battle_over always fires.
+	var ko_success: bool = context.get("ko", false)
+	if context.get("ko_attempted", false):
+		if ko_success:
+			ko_scored.emit()
+		else:
+			ko_failed.emit()
 
 	card_played.emit(card, bonus)
 	ap_changed.emit(ap, BattleConfig.AP_PER_TURN)
@@ -122,8 +165,13 @@ func play_card(index: int) -> bool:
 	# "ATTACK 8" becomes "ATTACK 4" in real time instead of lying until the
 	# turn ends.
 	intent_changed.emit(brain.intent_text(enemy, player))
-	_check_battle_over()
-	return true
+	if ko_success and not is_over:
+		is_over = true
+		won_by_ko = true
+		log_line.emit("You win by KO!")
+		battle_over.emit(true)
+	else:
+		_check_battle_over()
 
 func end_turn() -> void:
 	if is_over:
@@ -146,6 +194,8 @@ func _begin_player_turn() -> void:
 	turn_number += 1
 	player.expire_guard()
 	StatusRegistry.apply_turn_start(player)
+	if _check_battle_over():
+		return
 	_play_history.clear()
 	deck.draw(BattleConfig.HAND_SIZE)
 	ap = BattleConfig.AP_PER_TURN
@@ -159,6 +209,9 @@ func _begin_player_turn() -> void:
 func _run_enemy_turn() -> void:
 	enemy.expire_guard()
 	StatusRegistry.apply_turn_start(enemy)
+	# A turn-start status (Bleed) can finish a fighter before it acts.
+	if _check_battle_over():
+		return
 
 	var context: Dictionary = {"bonus_damage": 0, "results": [], "log": []}
 	for effect: CardEffect in brain.build_effects():
