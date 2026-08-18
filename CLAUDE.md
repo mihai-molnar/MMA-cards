@@ -29,7 +29,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `1432 checks, 0 failures` / `PASS`.
+on a clean tree ends with `1436 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -859,7 +859,7 @@ WITH a rewards screen -- 3 random cards drawn from a 6-card pool (One-Two,
 Strength Up, Prepared, High Kick, Flying Knee, Elbow), or skip -- offered
 between them, fully art-directed down to the fight screen itself (portrait
 fight stage with a slam intro, icon readouts, outlined HUD text), sound
-effects on every battle beat (see "Sound" under Game feel), 1432 headless
+effects on every battle beat (see "Sound" under Game feel), 1436 headless
 checks. `RunState.deck_ids` persists the run's deck across fights -- a
 reward pick joins it and every fresh `BattleState` is built from it, so a
 card taken after fight 1 is in the pool (and can be drawn, played, or
