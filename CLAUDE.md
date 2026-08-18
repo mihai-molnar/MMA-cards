@@ -1,12 +1,19 @@
 # mma-cards
 
 Slay the Spire-inspired MMA card battler. Godot 4.5.1, typed GDScript.
-Currently a two-fight run: 14-card starting deck, 3 AP per turn,
-jab->straight combo, guard, strength, telegraphed enemy intent, HP carried
-between fights. Beating fight 1 offers a card reward (One-Two, Strength Up
-or Prepared, or skip) before fight 2, so the deck the player fights with can
-grow past 14. Fight 1 is the Brawler, fight 2 the harder Kickboxer (who
-mirrors Low Kick's Leg Injury back at the player).
+Currently a two-fight run: 14-card starting deck (4 unique cards), 3 AP per
+turn, jab->straight combo, guard, strength, telegraphed enemy intent, HP
+carried between fights. Beating fight 1 opens a rewards screen offering 3
+random cards drawn from a 6-card pool (One-Two, Strength Up, Prepared, High
+Kick, Flying Knee, Elbow -- 10 unique cards in the library total) before
+fight 2, so the deck the player fights with can grow past 14. Three of the
+reward cards -- High Kick, Flying Knee, Elbow -- carry a percentage chance
+to KO the opponent outright on a hit that lands past guard, ending the fight
+on the spot; Elbow can also inflict Bleed, a damage-per-turn status that
+pierces guard. Fight 1 is the Brawler, fight 2 the harder Kickboxer (who
+mirrors Low Kick's Leg Injury back at the player). A backquote-toggled dev
+menu (`scripts/ui/dev_menu.gd`) plays any library card instantly against the
+enemy for testing -- see "The presentation layer".
 
 ## Commands
 
@@ -22,7 +29,7 @@ Run the tests (headless, no window):
 ./tests/run_tests.sh
 ```
 Exits 0 on pass, 1 on failure. Run this before every commit. Expected output
-on a clean tree ends with `1209 checks, 0 failures` / `PASS`.
+on a clean tree ends with `1432 checks, 0 failures` / `PASS`.
 
 **Never invoke `run_tests.gd` directly — it can report a false PASS.**
 GDScript has no catchable exceptions, so a runtime error partway through a
@@ -100,7 +107,20 @@ system is being bypassed.
 
 **Add an effect:** subclass `CardEffect` in `scripts/core/effects/`, override
 `apply(source, target, context)` and `describe()`. The context dictionary carries
-`bonus_damage` (the first `DamageEffect` consumes it), `results`, and `log`.
+`bonus_damage` (the first `DamageEffect` consumes it), `results`, `log`, and
+`rng` (`BattleState`'s seeded per-battle `RandomNumberGenerator`, present on
+every real play and `dev_play`; an effect that rolls against it and finds it
+missing from the context should fail closed -- no rng means no roll, never a
+free success). `KOChanceEffect` (`scripts/core/effects/ko_chance_effect.gd`)
+is the precedent for a chance-based effect that can end the fight outright:
+it rolls only when the card's preceding `DamageEffect` dealt hp damage
+(reads `results.back()`), so a fully blocked strike never KOs, and writes
+`context["ko_attempted"]`/`context["ko"]` rather than mutating the fighter or
+`BattleState` itself -- `BattleState._resolve_play` reads those two keys
+generically to fire `ko_scored`/`ko_failed` and set `won_by_ko`, so the KO
+card needs no branch anywhere outside the effect. `ApplyStatusEffect.chance`
+is the same roll-against-`rng` pattern applied to a status instead of the
+fight's outcome (Elbow's `ELBOW_BLEED_CHANCE`).
 
 **Add a status:** create a script in `scripts/core/statuses/` defining `ID`,
 `DISPLAY_NAME`, `SHOW_TURNS` (which number display code prints beside it:
@@ -130,6 +150,15 @@ a card with `extend_duration = true` on its `ApplyStatusEffect` ADDS
 durations on re-application (each Low Kick keeps the leg hurt one turn
 longer) instead of refreshing to the longer one.
 
+`BleedStatus` (`scripts/core/statuses/bleed.gd`) is the precedent for a
+damage-over-time status: its `on_turn_start` calls `Fighter.apply_hp_loss`
+directly -- not `Combat.resolve_damage` -- so the tick pierces guard and
+skips every outgoing/incoming damage modifier (a cut does not care about
+strength). It returns `false` (never self-consumes; it just ticks down
+like Leg Injury) and uses `extend_duration = true` the same way Leg Injury
+does, so a second Elbow keeps the cut open longer rather than deeper
+(`stacks` stays 1 -- a fighter either bleeds or doesn't).
+
 **Add an opponent:** write a `_make_*()` in `OpponentLibrary` that builds an
 `OpponentData` with its rotation of `OpponentMove`s, add its tunables to
 `BattleConfig`, register its id in `OpponentLibrary.opponent()`, and append
@@ -148,12 +177,16 @@ card, that is exactly the stale-number trap the keyword exists to avoid.
 No magic numbers anywhere else. But the constants are not uniformly live:
 - `JAB_COST`, `JAB_DAMAGE`, `STRAIGHT_COST`, `STRAIGHT_DAMAGE`, `BLOCK_COST`,
   `BLOCK_GUARD`, `ONE_TWO_COST`, `ONE_TWO_DAMAGE`, `STRENGTH_UP_COST`,
-  `STRENGTH_UP_STACKS`, `PREPARED_COST` and `PREPARED_GUARD` are baked into
-  `resources/cards/*.tres` by `tools/generate_cards.gd` at generation time.
-  Editing one of these does **nothing** to the running game until you
-  re-run the generator (see Commands above). `tests/suites/test_card_library.gd`
-  asserts the loaded `.tres` values against these constants, so a forgotten
-  regen now fails the suite instead of silently doing nothing.
+  `STRENGTH_UP_STACKS`, `PREPARED_COST`, `PREPARED_GUARD`, and the three KO
+  cards' `HIGH_KICK_COST`/`HIGH_KICK_DAMAGE`/`HIGH_KICK_KO_CHANCE`,
+  `FLYING_KNEE_COST`/`FLYING_KNEE_DAMAGE`/`FLYING_KNEE_KO_CHANCE`, and
+  `ELBOW_COST`/`ELBOW_DAMAGE`/`ELBOW_KO_CHANCE`/`ELBOW_BLEED_CHANCE` are
+  baked into `resources/cards/*.tres` by `tools/generate_cards.gd` at
+  generation time. Editing one of these does **nothing** to the running
+  game until you re-run the generator (see Commands above).
+  `tests/suites/test_card_library.gd` asserts the loaded `.tres` values
+  against these constants, so a forgotten regen now fails the suite instead
+  of silently doing nothing.
 - Every other constant (combo ratio, strength scaling, AP, hand size, HP) is
   read directly at battle time and takes effect immediately — no regen step
   needed. That includes every `BRAWLER_*`, `KICKBOXER_*` and
@@ -161,9 +194,13 @@ No magic numbers anywhere else. But the constants are not uniformly live:
   `BattleConfig` with no `.tres`/generator step of its own. The old
   `ENEMY_*` constants are gone — enemy behavior is per-opponent now, not
   a single shared enemy. `PREPARED_STATUS_TURNS` (the status's lifecycle
-  ceiling, not a balance knob — see its comment in `battle_config.gd`) and
-  `REWARD_CARDS` (the rewards screen's pool, read by `RewardPool.options()`)
-  are both live-read too, same as `RUN_OPPONENTS`.
+  ceiling, not a balance knob — see its comment in `battle_config.gd`),
+  `BLEED_DAMAGE_PER_TURN`/`BLEED_TURNS` (read by `BleedStatus`, not baked
+  into any card -- the card only carries the *chance* to apply Bleed, which
+  IS baked; how hard and how long Bleed hits once applied is live), and
+  `REWARD_CARDS` (the rewards screen's pool, read by `RewardPool.options()`
+  and now six entries -- see "The rewards screen") are all live-read too,
+  same as `RUN_OPPONENTS`.
 
 ## Card art
 
@@ -327,12 +364,17 @@ render:
 
 writes `/tmp/card-faces.png` with row one the four library cards plus a
 fifth leg-injured preview of Jab, and row two the armed/un-armed Straight
-pair (to judge the combo tint below) sharing its width with the three
-reward cards (One-Two, Strength Up, Prepared), laid out to fit the
-project's 1152x648 base canvas. No extra zoom row is needed: at
-that canvas size, `window/stretch/mode="canvas_items"` over the 2560x1440
-window already renders the capture at 2560/1152 = 2.222x, so a 200x300 card
-lands as roughly 444x667 real pixels in the PNG. Run it **non-headless** —
+pair (to judge the combo tint below, full scale) sharing its width with
+the whole reward pool -- `BattleConfig.REWARD_CARDS`, six cards since the
+KO pass, read live rather than hardcoded -- rendered smaller at
+`REWARD_SCALE` (0.5) so all six fit beside the pair inside the project's
+1152x648 base canvas (see the width arithmetic in
+`tools/capture_cards.gd::_add_reward_strip`). No extra zoom row is needed
+for row one or the combo pair: at that canvas size,
+`window/stretch/mode="canvas_items"` over the 2560x1440 window already
+renders the capture at 2560/1152 = 2.222x, so a 200x300 card lands as
+roughly 444x667 real pixels in the PNG (the reward strip's smaller cards
+scale down from that same baseline). Run it **non-headless** —
 `get_texture()` needs a rendering context. This is the static sibling of
 "Verifying animation" below, and it has the same shape: green tests, wrong
 picture.
@@ -376,7 +418,12 @@ by "tidying":
   already gone by the time the hook grants the new amount, so the payout
   never stacks on leftovers. A hook returning `true` (only Prepared today)
   is consumed exactly once — the status is removed the same turn it pays
-  out, so the chip disappears rather than lingering at 0.
+  out, so the chip disappears rather than lingering at 0. Bleed's hook
+  returns `false` (it just ticks down) but still fires here, which is why
+  both `_begin_player_turn` and `_run_enemy_turn` check `_check_battle_over()`
+  immediately after the turn-start hook, before drawing a hand or acting —
+  a bleeding fighter can be finished by the tick itself, before they get to
+  do anything on the turn that kills them.
 - **Status timers decrement at their owner's turn END.** The enemy's 2-turn
   strength buff is therefore live during both the buff turn and the following
   attack, then expires — exactly one attack gets the bonus.
@@ -476,8 +523,15 @@ the next one: `BattleHud`'s result banner still shows CONTINUE, but
 `RewardsView` (`scripts/ui/rewards_view.gd`) instead of starting the fight
 directly. Modelled on `PileView` -- a full-rect modal overlay with real
 `CardView`s -- but sized for three cards instead of a grid: the offered
-ids (`RewardPool.options()`, today the whole of `BattleConfig.REWARD_CARDS`
-every time) render at `CARD_REST_SCALE`, and clicking one selects it,
+ids come from `RewardPool.options()`, which Fisher-Yates shuffles
+`BattleConfig.REWARD_CARDS` (six entries: One-Two, Strength Up, Prepared,
+High Kick, Flying Knee, Elbow) and takes the front `RewardPool.OFFER_COUNT`
+(3) -- three distinct random cards, different every time the screen opens.
+`options()` takes an injectable `rng` so tests are deterministic; every
+game call site passes none, which means a fresh randomized generator. A
+pool smaller than `OFFER_COUNT` would simply offer everything (`mini()`
+guards the slice), though the pool has outgrown that case now. The offered
+cards render at `CARD_REST_SCALE`, and clicking one selects it,
 re-using `set_combo_armed()`'s frame tint as the "this card is charged"
 read -- proven legible on both colourways already -- plus a bigger
 `SELECTED_SCALE`, so the chosen card sits visibly proud of its neighbours.
@@ -494,6 +548,45 @@ first reads Burn, STR and Prepared, so the keyword tooltips have to win.
 Continue/Skip are plain `Button`s on purpose, placeholder until real
 button art exists (the End Turn plate treatment is the model to follow
 then).
+
+**The KO splash.** `KoSplash` (`scripts/ui/ko_splash.gd`) is the
+fight-ending overlay: centre-screen art that stamps in (spring from
+`KO_SPLASH_START_SCALE` down to rest), holds, then fades -- `show_ko()`
+for a scored knockout, `show_failed()` for a missed roll, each choosing the
+`ko`/`failed` texture from `CardArt.ui_icon_for` and recording the decision
+in `_last_shown` *before* the `is_inside_tree()` guard (rule 3), so
+detached tests can assert it. It sits at `SPLASH_Z = 80`, above even
+`StatusTooltip.TOOLTIP_Z` (70) -- the fight's biggest moment is never
+covered by a lingering tooltip. `BattleView` owns the wiring: `BattleState`
+emits `ko_scored`/`ko_failed` synchronously from inside `_resolve_play`,
+*before* `fighters_changed`, and `_on_ko_scored`/`_on_ko_failed` arm
+`_pending_ko` exactly like `_pending_hit_sound` and `_pending_follow_up` --
+the deferred `_land_fighter_update` binds it into the same impact-timed
+update via `_fire_ko_splash`, which on a scored KO also kicks
+`Juice.KO_SPLASH_SHAKE_AMPLITUDE` and plays `slam` (the hardest hit in the
+game gets the hardest feedback); a failed roll is just the blink, since the
+hit's own impact juice already played. `BattleState.won_by_ko` records
+whether the fight ended by knockout rather than hp reaching zero, and
+`_on_battle_over` adds `Juice.KO_SPLASH_POP_TIME + Juice.KO_SPLASH_HOLD` to
+the result banner's delay on a KO win, so CONTINUE never appears mid-stamp
+-- it waits for the splash to be read first, the same "defer the view, not
+the model" rule as every other beat in this section.
+
+**The dev menu.** Backquote (`KEY_QUOTELEFT`, `BattleView._unhandled_input`)
+toggles `DevMenu` (`scripts/ui/dev_menu.gd`): the same modal-overlay,
+real-`CardView`-grid shape as `PileView`, but populated with
+`CardLibrary.build_deck(CardLibrary.all_card_ids())` -- every card in the
+library, not just one pile. Clicking a card in the grid emits
+`DevMenu.card_picked(card)`; `BattleView._on_dev_card_picked` calls
+`BattleState.dev_play(card)`, which runs the card through the exact same
+`_resolve_play` real plays use (no AP cost, no hand or deck involvement --
+the card is a fresh instance outside the deck's piles, so the deck
+invariant is untouched), so KO, Bleed and every signal fire normally; the
+menu stays open afterward so an effect can be spammed for testing (a KO
+card's roll, Elbow's Bleed chance) without reopening it each time. DEV
+ONLY -- there is no in-fiction way to reach it, and it is how this project
+verifies the KO/Bleed pass end-to-end since the fight cannot otherwise be
+forced into a specific hp/guard state on demand.
 
 One Godot trap the stage taught: on a `TextureRect`, set `stretch_mode`/
 `expand_mode` BEFORE `position`/`size`. `Control.set_size()` clamps against
@@ -762,10 +855,11 @@ won during implementation and the spec was usually amended, but not always.
 ## State of the project
 
 Playable two-fight run (Brawler then Kickboxer, HP carried between fights)
-WITH a card reward -- One-Two, Strength Up or Prepared, or skip -- offered
+WITH a rewards screen -- 3 random cards drawn from a 6-card pool (One-Two,
+Strength Up, Prepared, High Kick, Flying Knee, Elbow), or skip -- offered
 between them, fully art-directed down to the fight screen itself (portrait
 fight stage with a slam intro, icon readouts, outlined HUD text), sound
-effects on every battle beat (see "Sound" under Game feel), 1209 headless
+effects on every battle beat (see "Sound" under Game feel), 1432 headless
 checks. `RunState.deck_ids` persists the run's deck across fights -- a
 reward pick joins it and every fresh `BattleState` is built from it, so a
 card taken after fight 1 is in the pool (and can be drawn, played, or
@@ -773,13 +867,18 @@ burned) for fight 2. Burn is a fourth deck pile alongside draw/hand/discard:
 a burned card (Strength Up today) leaves play for the rest of the *fight*
 only -- `Deck.reset()` empties the burned pile at the next fight, so a
 burned card is back in the pool next time, same as any other reward card.
-What is conspicuously still placeholder:
+Three reward cards can end a fight outright: High Kick, Flying Knee and
+Elbow each carry a percentage chance to KO on a hit that lands past guard
+(`KOChanceEffect`, `KoSplash` stamping the win in centre-screen -- see "The
+presentation layer"), and Elbow can also inflict Bleed, a guard-piercing
+damage-per-turn status. What is conspicuously still placeholder:
 
 - **No music, and the sound palette is minimal.** One click for all UI, no
   sound on playing Block itself (a fully blocked incoming hit does slap),
   no result-banner stinger, no crowd bed.
-- **No map, no deck-building beyond the single reward pick, no random
-  reward pools.** The run is a fixed two-fight sequence and every reward
-  screen offers the same three cards; `RunState.current_opponent()` and
-  `RewardPool.options()` are the seams a branching map and a larger random
-  pool would replace.
+- **No map, no deck-building beyond a single post-fight reward pick.** The
+  run is a fixed two-fight sequence; `RunState.current_opponent()` is the
+  seam a branching map would replace. The reward pool itself is randomized
+  now (3 of 6, different every screen -- see "The rewards screen"), but it
+  is still one flat, hand-authored list with no rarity tiers, no scaling
+  with run depth, and no pool growth beyond `BattleConfig.REWARD_CARDS`.

@@ -299,7 +299,8 @@ func _test_rules_lines_fit_the_painted_panel(t: TestRunner) -> void:
 	# genuinely off the panel.
 	const EDGE_TOLERANCE: float = 0.03
 
-	for card_id: StringName in [&"jab", &"straight", &"block", &"low_kick", &"one_two", &"strength_up", &"prepared"]:
+	for card_id: StringName in [&"jab", &"straight", &"block", &"low_kick", &"one_two", &"strength_up", &"prepared",
+			&"high_kick", &"flying_knee", &"elbow"]:
 		var card: CardData = CardLibrary.load_card(card_id)
 		# Each card is checked against the frame it actually wears.
 		var image: Image = _frame_image(
@@ -417,7 +418,8 @@ func _test_rules_lines_fit_with_buffed_previews(t: TestRunner) -> void:
 	var target := Fighter.new("Target", 50)
 	var tag_pattern: RegEx = RegEx.create_from_string("\\[/?color[^\\]]*\\]")
 
-	for card_id: StringName in [&"jab", &"straight", &"low_kick", &"one_two"]:
+	for card_id: StringName in [&"jab", &"straight", &"low_kick", &"one_two",
+			&"high_kick", &"flying_knee", &"elbow"]:
 		var card: CardData = CardLibrary.load_card(card_id)
 		var previewed_plain: String = tag_pattern.sub(
 			CardTemplate.rules_bbcode(card, strong, target), "", true)

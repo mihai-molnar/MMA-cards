@@ -90,10 +90,12 @@ const KICKBOXER_BUFF_DURATION: int = 2
 ## next id is chosen (see RunState); this array is the linear placeholder.
 const RUN_OPPONENTS: Array[StringName] = [&"brawler", &"kickboxer"]
 
-## The rewards screen's pool, in display order. Live-read like RUN_OPPONENTS
-## -- no regen step. Today the whole pool is offered every time; a random
-## draw from a larger pool later changes RewardPool, not this list's readers.
-const REWARD_CARDS: Array[StringName] = [&"one_two", &"strength_up", &"prepared"]
+## The rewards screen's pool. Live-read like RUN_OPPONENTS -- no regen step.
+## RewardPool.options() draws OFFER_COUNT (3) distinct random cards from
+## this list each time the screen opens -- growing the pool changes what
+## can be offered, not how many are.
+const REWARD_CARDS: Array[StringName] = [&"one_two", &"strength_up", &"prepared",
+	&"high_kick", &"flying_knee", &"elbow"]
 
 ## Combo bonus = floori(sum_of_base_damage * COMBO_BONUS_RATIO)
 const COMBO_BONUS_RATIO: float = 0.5

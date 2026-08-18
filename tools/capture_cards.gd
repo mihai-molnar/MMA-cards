@@ -2,9 +2,10 @@ extends SceneTree
 
 ## Renders the card library exactly as CardView draws them and writes a
 ## screenshot: row one is the five library/preview faces (see _add_row), row
-## two is the un-armed/combo-armed Straight pair plus the three reward cards
-## (One-Two, Strength Up, Prepared), laid out so both rows fit on the
-## project's 1152x648 base canvas.
+## two is the un-armed/combo-armed Straight pair plus the whole reward pool
+## (BattleConfig.REWARD_CARDS -- six cards since the KO pass added High
+## Kick, Flying Knee and Elbow), laid out so both rows fit on the project's
+## 1152x648 base canvas.
 ##
 ## Card-face layout is geometry no test can check. An assertion that
 ## _type_label.position equals CardTemplate's zone proves the code did what
@@ -31,6 +32,15 @@ extends SceneTree
 const OUTPUT: String = "/tmp/card-faces.png"
 const CARD_IDS: Array[StringName] = [&"jab", &"straight", &"block", &"low_kick"]
 const GAP: float = 20.0
+## Six reward cards no longer fit at full scale beside the combo pair (6*200
+## + 5*20 = 1300px alone, before the pair or margins). REWARD_SCALE shrinks
+## just the reward strip -- the combo pair stays full scale so the tint
+## comparison that row exists for is untouched. 0.5 is the smallest of the
+## already-established "grid of many cards" scales in the codebase
+## (DevMenu/PileView use 0.55, RewardsView 0.7 for three cards) -- picked
+## here because six cards is the most crowded grid this project renders.
+const REWARD_SCALE: float = 0.5
+const REWARD_GAP: float = 14.0
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -67,8 +77,9 @@ func _run() -> void:
 	quit(0)
 
 ## The same Straight, un-armed then combo-armed, side by side, plus the
-## three reward cards sharing row two: the row is 420 (pair) + 20 +
-## 640 (3 cards) = 1080px of content, the same width as row one.
+## whole reward pool sharing row two. The pair stays full scale (420px);
+## the reward strip renders at REWARD_SCALE and is sized to fit the
+## remaining width -- see _add_reward_strip.
 ##
 ## set_combo_armed() tints the FRAME, which is already gold -- so "does the gold
 ## get golder" is a question a single card cannot answer and a description
@@ -89,15 +100,35 @@ func _add_combo_row(origin: Vector2) -> void:
 		view.target_position = Vector2(i * (CardView.CARD_SIZE.x + GAP), 0.0)
 		row.add_child(view)
 
-	# The three reward cards, sharing row two with the combo pair: the row is
-	# 420 + 20 + 640 = 1080px of content, the same width as row one.
-	var x: float = 2.0 * (CardView.CARD_SIZE.x + GAP)
-	for card_id: StringName in [&"one_two", &"strength_up", &"prepared"]:
+	_add_reward_strip(row, 2.0 * (CardView.CARD_SIZE.x + GAP))
+
+## Iterates BattleConfig.REWARD_CARDS directly (live-read, like every other
+## reader of that constant -- RewardPool, CardLibrary, the dev menu) rather
+## than a hardcoded id list, so a future pool change shows up here with no
+## edit to this tool. Each card renders at REWARD_SCALE, vertically centred
+## in the row's CARD_SIZE.y band so it sits level with the full-scale combo
+## pair beside it. Uses set_rest_transform's pivot-compensated placement
+## (see DevMenu.open() for the same math) since CardView scales about its
+## bottom-centre pivot -- a naive position assignment would offset a scaled
+## card up and to the right of where it visually belongs.
+##
+## Width check at REWARD_SCALE 0.5 (cell 100x150), REWARD_GAP 14: six cells
+## plus five gaps is 6*100 + 5*14 = 670px, starting at x_start (440 local, or
+## 460 once the row's own GAP-px origin is added) -- the strip's right edge
+## lands at 460 + 670 = 1130, inside the 1152-wide canvas with 22px to
+## spare. Widen REWARD_GAP or shrink REWARD_SCALE if the pool grows again.
+func _add_reward_strip(row: Control, x_start: float) -> void:
+	var cell: Vector2 = CardView.CARD_SIZE * REWARD_SCALE
+	var y: float = (CardView.CARD_SIZE.y - cell.y) / 2.0
+	var x: float = x_start
+	for card_id: StringName in BattleConfig.REWARD_CARDS:
 		var view: CardView = CardView.create(CardLibrary.load_card(card_id))
-		# target_position, never position -- see the note in _add_row().
-		view.target_position = Vector2(x, 0.0)
+		var rest := Vector2(
+			x - CardView.CARD_SIZE.x * (1.0 - REWARD_SCALE) / 2.0,
+			y - CardView.CARD_SIZE.y * (1.0 - REWARD_SCALE))
+		view.set_rest_transform(rest, 0.0, 0, REWARD_SCALE)
 		row.add_child(view)
-		x += CardView.CARD_SIZE.x + GAP
+		x += cell.x + REWARD_GAP
 
 func _add_row(origin: Vector2) -> void:
 	var row := Control.new()
