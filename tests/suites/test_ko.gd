@@ -10,6 +10,7 @@ func run(t: TestRunner) -> void:
 	_test_seeded_rolls_are_deterministic(t)
 	_test_describe_prints_the_chance(t)
 	_test_dev_play_ignores_ap_and_hand(t)
+	_test_lethal_hit_failed_roll_stays_silent(t)
 
 func _make_ko_card(damage: int, chance: float) -> CardData:
 	var card := CardData.new()
@@ -102,3 +103,16 @@ func _test_dev_play_ignores_ap_and_hand(t: TestRunner) -> void:
 	t.check_eq(battle.deck.hand.size(), hand_before, "dev_play touches no hand card")
 	t.check(battle.enemy.hp < hp_before, "dev_play's effects are real")
 	t.check_eq(battle.deck.total_cards(), 14, "the deck invariant is untouched")
+
+func _test_lethal_hit_failed_roll_stays_silent(t: TestRunner) -> void:
+	var battle := BattleState.new(1234)
+	battle.start()
+	battle.enemy.hp = 1
+	var failed: Array = []
+	battle.ko_failed.connect(func() -> void: failed.append(true))
+	var overs: Array = []
+	battle.battle_over.connect(func(player_won: bool) -> void: overs.append(player_won))
+	battle.dev_play(_make_ko_card(3, 0.0))
+	t.check(failed.is_empty(), "a failed roll on the killing blow announces nothing")
+	t.check_eq(overs, [true], "the win is a plain win")
+	t.check(not battle.won_by_ko, "and not recorded as a KO")

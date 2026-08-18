@@ -151,7 +151,11 @@ func _resolve_play(card: CardData, bonus: int, record_history: bool) -> void:
 	if context.get("ko_attempted", false):
 		if ko_success:
 			ko_scored.emit()
-		else:
+		elif enemy.is_alive():
+			# A failed finisher roll on a hit that already won the fight
+			# outright (hp_loss clamped to a kill) must not stamp FAILED
+			# over the victory banner -- only announce the miss when the
+			# enemy is still standing to shake it off.
 			ko_failed.emit()
 
 	card_played.emit(card, bonus)
@@ -194,7 +198,11 @@ func _begin_player_turn() -> void:
 	turn_number += 1
 	player.expire_guard()
 	StatusRegistry.apply_turn_start(player)
+	# A turn-start status (Bleed) can finish a fighter before it acts. The
+	# fatal tick must still reach the panels: nothing downstream updates
+	# them once this path returns.
 	if _check_battle_over():
+		fighters_changed.emit()
 		return
 	_play_history.clear()
 	deck.draw(BattleConfig.HAND_SIZE)
@@ -209,8 +217,11 @@ func _begin_player_turn() -> void:
 func _run_enemy_turn() -> void:
 	enemy.expire_guard()
 	StatusRegistry.apply_turn_start(enemy)
-	# A turn-start status (Bleed) can finish a fighter before it acts.
+	# A turn-start status (Bleed) can finish a fighter before it acts. The
+	# fatal tick must still reach the panels: nothing downstream updates
+	# them once this path returns.
 	if _check_battle_over():
+		fighters_changed.emit()
 		return
 
 	var context: Dictionary = {"bonus_damage": 0, "results": [], "log": []}

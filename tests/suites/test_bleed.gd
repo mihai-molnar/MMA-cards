@@ -45,11 +45,14 @@ func _test_bleed_can_finish_the_enemy_before_it_acts(t: TestRunner) -> void:
 	battle.enemy.statuses.apply(&"bleed", 1, BattleConfig.BLEED_TURNS, true)
 	var overs: Array = []
 	battle.battle_over.connect(func(player_won: bool) -> void: overs.append(player_won))
+	var updates: Array = []
+	battle.fighters_changed.connect(func() -> void: updates.append(true))
 	var player_hp_before: int = battle.player.hp
 	battle.end_turn()
 	t.check_eq(overs, [true], "the enemy bleeds out at its turn start and loses")
 	t.check_eq(battle.player.hp, player_hp_before,
 		"the dead enemy never got its attack")
+	t.check(not updates.is_empty(), "the fatal tick reaches the panels")
 
 func _test_chance_gated_application(t: TestRunner) -> void:
 	for certain: bool in [true, false]:
