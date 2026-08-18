@@ -9,6 +9,7 @@ func run(t: TestRunner) -> void:
 	_test_straight_rules_text_matches_the_combo_rule(t)
 	_test_reward_cards_load(t)
 	_test_reward_cards_stay_out_of_the_starting_deck(t)
+	_test_ko_cards_load(t)
 
 func _test_cards_load(t: TestRunner) -> void:
 	# Compared against BattleConfig, not literals: the .tres files are baked
@@ -172,3 +173,40 @@ func _test_reward_cards_stay_out_of_the_starting_deck(t: TestRunner) -> void:
 	for card_id: StringName in BattleConfig.REWARD_CARDS:
 		t.check(not BattleConfig.DECK_COMPOSITION.has(card_id),
 			"%s is not in DECK_COMPOSITION" % card_id)
+
+func _test_ko_cards_load(t: TestRunner) -> void:
+	var high_kick: CardData = CardLibrary.load_card(&"high_kick")
+	t.check(high_kick != null, "high_kick.tres loads")
+	t.check_eq(high_kick.cost, BattleConfig.HIGH_KICK_COST, "high kick costs HIGH_KICK_COST AP")
+	t.check_eq(high_kick.total_base_damage(), BattleConfig.HIGH_KICK_DAMAGE,
+		"high kick deals HIGH_KICK_DAMAGE")
+	t.check(high_kick.has_tag(&"kick"), "high kick carries the kick tag (kick hit sound)")
+	var hk_ko: KOChanceEffect = high_kick.effects[1] as KOChanceEffect
+	t.check(hk_ko != null, "high kick's second effect is the KO roll")
+	t.check_eq(hk_ko.chance, BattleConfig.HIGH_KICK_KO_CHANCE, "high kick's KO chance is baked")
+	t.check(high_kick.rules_text.contains("KO"), "high kick names the KO keyword")
+
+	var knee: CardData = CardLibrary.load_card(&"flying_knee")
+	t.check_eq(knee.cost, BattleConfig.FLYING_KNEE_COST, "flying knee costs FLYING_KNEE_COST AP")
+	t.check_eq(knee.total_base_damage(), BattleConfig.FLYING_KNEE_DAMAGE,
+		"flying knee deals FLYING_KNEE_DAMAGE")
+	t.check(knee.has_tag(&"kick"), "flying knee carries the kick tag")
+	t.check_eq((knee.effects[1] as KOChanceEffect).chance, BattleConfig.FLYING_KNEE_KO_CHANCE,
+		"flying knee's KO chance is baked")
+
+	var elbow: CardData = CardLibrary.load_card(&"elbow")
+	t.check_eq(elbow.cost, BattleConfig.ELBOW_COST, "elbow costs ELBOW_COST AP")
+	t.check_eq(elbow.total_base_damage(), BattleConfig.ELBOW_DAMAGE, "elbow deals ELBOW_DAMAGE")
+	t.check(not elbow.has_tag(&"kick"), "elbow punches, not kicks")
+	t.check_eq(elbow.effects.size(), 3, "elbow: damage, KO roll, bleed")
+	t.check_eq((elbow.effects[1] as KOChanceEffect).chance, BattleConfig.ELBOW_KO_CHANCE,
+		"elbow's KO chance is baked")
+	var bleed: ApplyStatusEffect = elbow.effects[2] as ApplyStatusEffect
+	t.check(bleed != null, "elbow's third effect applies a status")
+	t.check_eq(bleed.status_id, &"bleed", "the status is bleed")
+	t.check_eq(bleed.chance, BattleConfig.ELBOW_BLEED_CHANCE, "the bleed chance is baked")
+	t.check_eq(bleed.turns, BattleConfig.BLEED_TURNS, "bleed lasts BLEED_TURNS")
+	t.check(not bleed.target_self, "the bleed lands on the opponent")
+	t.check(bleed.extend_duration, "a second elbow extends the bleed")
+	t.check(bleed.require_hp_damage, "a blocked elbow bleeds nothing")
+	t.check(elbow.rules_text.contains("Bleed"), "elbow names the Bleed keyword")
