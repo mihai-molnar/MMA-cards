@@ -216,6 +216,19 @@ const SLAM_RECOIL_TIME: float = 0.16
 const SLAM_SHAKE_AMPLITUDE: float = 18.0
 const SLAM_HIT_STOP: float = 0.10
 
+# --- KO splash -------------------------------------------------------------
+## The knockout overlay: art slams in oversized and springs down to rest
+## (the shrink-into-place reads as a stamp), holds long enough to be READ,
+## then fades. The failed roll is the same stamp at a blink of a hold --
+## "it almost happened", not a banner.
+const KO_SPLASH_START_SCALE: float = 2.2
+const KO_SPLASH_POP_TIME: float = 0.22
+const KO_SPLASH_HOLD: float = 1.0
+const KO_SPLASH_FADE: float = 0.25
+const KO_FAILED_HOLD: float = 0.30
+## The knockout's screen kick -- SHAKE_MAX, the hardest hit in the game.
+const KO_SPLASH_SHAKE_AMPLITUDE: float = 22.0
+
 # --- Sound ----------------------------------------------------------------
 ## Impact sounds get a small random pitch spread so repeats read as fresh
 ## hits; UI sounds play at 1.0 (SoundFx._PITCH_VARIED picks which is which).

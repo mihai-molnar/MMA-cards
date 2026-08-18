@@ -13,6 +13,7 @@ var screen_fx: ScreenFx
 var sound_fx: SoundFx
 var pile_view: PileView
 var rewards_view: RewardsView
+var ko_splash: KoSplash
 
 ## Set by _on_card_chosen just before calling battle.play_card(), which emits
 ## fighters_changed synchronously -- so this is the only way _react_to_damage
@@ -55,6 +56,12 @@ var _pending_follow_up: Vector2i = _NO_FOLLOW_UP
 ## banner must wait for the SECOND beat when the follow-up was the kill).
 var _last_play_follow_up: bool = false
 
+## The KO attempt the in-flight play announced (&"ko", &"failed" or &"" for
+## none), armed exactly like _pending_follow_up: ko_scored/ko_failed are
+## emitted synchronously before fighters_changed, and the handler binds the
+## splash into the same deferred update, so it lands when the card strikes.
+var _pending_ko: StringName = &""
+
 func _ready() -> void:
 	run = RunState.new()
 	_build_ui()
@@ -78,6 +85,7 @@ func _start_fight() -> void:
 	# Silent: no click sound over the slam, and no stale pile over a new fight.
 	pile_view.dismiss()
 	rewards_view.dismiss()
+	ko_splash.dismiss()
 	hud.stage().set_portraits(&"player", opponent.id)
 	hud.stage().slam_in(_on_slam_impact, _on_slam_settled)
 
@@ -130,6 +138,11 @@ func _build_ui() -> void:
 	rewards_view.card_hovered.connect(_on_pile_card_hovered)
 	hud.add_child(rewards_view)
 
+	# The knockout overlay, above everything including the tooltip -- the
+	# fight's biggest moment may not be covered.
+	ko_splash = KoSplash.new()
+	hud.add_child(ko_splash)
+
 	# Attacks fly at the enemy, Block pulls back to the player.
 	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
 
@@ -148,6 +161,8 @@ func _connect_battle() -> void:
 	battle.ap_changed.connect(_on_ap_changed)
 	battle.hand_changed.connect(_on_hand_changed)
 	battle.follow_up_hit.connect(_on_follow_up_hit)
+	battle.ko_scored.connect(_on_ko_scored)
+	battle.ko_failed.connect(_on_ko_failed)
 	battle.fighters_changed.connect(_on_fighters_changed)
 	battle.intent_changed.connect(_on_intent_changed)
 	battle.battle_over.connect(_on_battle_over)
@@ -156,6 +171,14 @@ func _connect_battle() -> void:
 ## arm the split; _on_fighters_changed binds and clears it.
 func _on_follow_up_hit(hp_loss: int, absorbed: int) -> void:
 	_pending_follow_up = Vector2i(hp_loss, absorbed)
+
+## Emitted synchronously from inside play_card BEFORE fighters_changed --
+## arm the splash; _on_fighters_changed binds and clears it.
+func _on_ko_scored() -> void:
+	_pending_ko = &"ko"
+
+func _on_ko_failed() -> void:
+	_pending_ko = &"failed"
 
 func _on_turn_started(turn_number: int) -> void:
 	# Player turn start clears the player's guard by expiry (BattleState
@@ -282,11 +305,13 @@ func _on_fighters_changed() -> void:
 	var follow_up: Vector2i = _pending_follow_up
 	_pending_follow_up = _NO_FOLLOW_UP
 	_last_play_follow_up = follow_up != _NO_FOLLOW_UP
+	var ko: StringName = _pending_ko
+	_pending_ko = &""
 	if delay > 0.0 and is_inside_tree():
 		get_tree().create_timer(delay).timeout.connect(
-			_land_fighter_update.bind(hit_sound, follow_up))
+			_land_fighter_update.bind(hit_sound, follow_up, ko))
 	else:
-		_land_fighter_update(hit_sound, follow_up)
+		_land_fighter_update(hit_sound, follow_up, ko)
 
 ## The telegraph obeys the same rule as the fighter panels above: the model
 ## re-emits intent synchronously from inside play_card(), while the card is
@@ -318,7 +343,9 @@ func _land_intent_update() -> void:
 ## pulses only the first hit), the second lands the rest a follow_up_beat()
 ## later -- the same moment the card's restrike visually connects. Detached
 ## (tests), the split collapses to the plain single update.
-func _land_fighter_update(hit_sound: StringName = &"", follow_up: Vector2i = _NO_FOLLOW_UP) -> void:
+func _land_fighter_update(hit_sound: StringName = &"", follow_up: Vector2i = _NO_FOLLOW_UP, ko: StringName = &"") -> void:
+	if ko != &"":
+		_fire_ko_splash(ko)
 	if follow_up != _NO_FOLLOW_UP and is_inside_tree():
 		hud.update_fighters_mid_hit(battle, follow_up.x, follow_up.y)
 		_fire_beat_feedback(hit_sound)
@@ -349,6 +376,17 @@ func _fire_beat_feedback(hit_sound: StringName) -> void:
 		var side: StringName = hud.last_damage_side()
 		hud.stage().flash_hit(side)
 		hud.stage().shake(side, Juice.portrait_shake_amplitude(amount))
+
+## The splash plus its supporting cast. A scored KO is the hardest hit in
+## the game: the slam sound and a max screen kick sell it. A failed roll is
+## just the blink -- the hit's own feedback already played.
+func _fire_ko_splash(kind: StringName) -> void:
+	if kind == &"ko":
+		ko_splash.show_ko()
+		screen_fx.shake(Juice.KO_SPLASH_SHAKE_AMPLITUDE)
+		sound_fx.play(&"slam")
+	else:
+		ko_splash.show_failed()
 
 func _fire_impact(amount: int) -> void:
 	# Both the freeze and the kick scale with the damage that landed, so a
@@ -401,6 +439,9 @@ func _on_battle_over(player_won: bool) -> void:
 	# the SECOND beat -- otherwise it covers the restrike it announces.
 	if _last_play_follow_up:
 		delay += Juice.follow_up_beat()
+	# A KO win's banner waits for the splash to stamp in and be read.
+	if battle.won_by_ko:
+		delay += Juice.KO_SPLASH_POP_TIME + Juice.KO_SPLASH_HOLD
 	if delay > 0.0 and is_inside_tree():
 		get_tree().create_timer(delay + Juice.RESULT_BEAT).timeout.connect(
 			_show_result.bind(player_won))
