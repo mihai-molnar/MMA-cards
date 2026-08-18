@@ -13,6 +13,7 @@ var screen_fx: ScreenFx
 var sound_fx: SoundFx
 var pile_view: PileView
 var rewards_view: RewardsView
+var dev_menu: DevMenu
 
 ## Set by _on_card_chosen just before calling battle.play_card(), which emits
 ## fighters_changed synchronously -- so this is the only way _react_to_damage
@@ -78,6 +79,7 @@ func _start_fight() -> void:
 	# Silent: no click sound over the slam, and no stale pile over a new fight.
 	pile_view.dismiss()
 	rewards_view.dismiss()
+	dev_menu.dismiss()
 	hud.stage().set_portraits(&"player", opponent.id)
 	hud.stage().slam_in(_on_slam_impact, _on_slam_settled)
 
@@ -129,6 +131,13 @@ func _build_ui() -> void:
 	rewards_view.finished.connect(_on_rewards_finished)
 	rewards_view.card_hovered.connect(_on_pile_card_hovered)
 	hud.add_child(rewards_view)
+
+	# The dev overlay (backquote): same layer cake as the pile browser.
+	dev_menu = DevMenu.new()
+	dev_menu.closed.connect(_on_pile_closed)
+	dev_menu.card_picked.connect(_on_dev_card_picked)
+	dev_menu.card_hovered.connect(_on_pile_card_hovered)
+	hud.add_child(dev_menu)
 
 	# Attacks fly at the enemy, Block pulls back to the player.
 	hand_view.set_lunge_anchors(hud.enemy_centre(), hud.player_centre())
@@ -208,6 +217,26 @@ func _on_status_hovered(id: StringName, anchor: Vector2, hovered: bool) -> void:
 		status_tooltip.show_for_status(id, anchor)
 	else:
 		status_tooltip.hide_tooltip()
+
+## Backquote toggles the dev menu. _unhandled_input, so typing never exists
+## in this game to conflict with -- and a click on the menu itself is
+## handled before it gets here.
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event as InputEventKey).keycode == KEY_QUOTELEFT:
+		if dev_menu.visible:
+			dev_menu.close()
+		else:
+			status_tooltip.hide_tooltip()
+			dev_menu.open(CardLibrary.build_deck(CardLibrary.all_card_ids()))
+
+## A dev pick plays instantly: no card animation, so no reaction delay --
+## but the hit sound is armed exactly like a real play, and dev_play's
+## signals drive the same pipeline (KO splash included).
+func _on_dev_card_picked(card: CardData) -> void:
+	_pending_hit_sound = SoundFx.hit_sound_for_card(card)
+	battle.dev_play(card)
+	_pending_hit_sound = &""
 
 ## A pile icon: open the browser over the battle. Reads the pile at click
 ## time -- the counts on the icons and the grid can never disagree.

@@ -39,3 +39,15 @@ static func build_deck(ids: Array[StringName]) -> Array[CardData]:
 
 static func build_starting_deck() -> Array[CardData]:
 	return build_deck(starting_deck_ids())
+
+## Every distinct card id in the game: the starting deck's plus the reward
+## pool's. Only the dev menu enumerates this -- the run itself always works
+## from a specific deck list.
+static func all_card_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for card_id: StringName in BattleConfig.DECK_COMPOSITION:
+		ids.append(card_id)
+	for card_id: StringName in BattleConfig.REWARD_CARDS:
+		if not ids.has(card_id):
+			ids.append(card_id)
+	return ids
