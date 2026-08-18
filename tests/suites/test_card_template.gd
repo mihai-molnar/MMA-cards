@@ -18,6 +18,7 @@ func run(t: TestRunner) -> void:
 	_test_reward_card_number_colours(t)
 	_test_rules_lines_fit_with_buffed_previews(t)
 	_test_pixel_conversion(t)
+	_test_ko_keyword(t)
 
 ## The frame is drawn OVER the illustration, and its art opening is not a
 ## clean rectangle: the octagonal window's cut corners and the trim shadows
@@ -456,3 +457,23 @@ func _test_pixel_conversion(t: TestRunner) -> void:
 	t.check(is_equal_approx(badge.get_center().y, 150.0),
 		"centred_pixels centres the box on the given point vertically")
 	t.check(is_equal_approx(badge.size.x, 20.0), "centred_pixels scales the box width")
+
+func _test_ko_keyword(t: TestRunner) -> void:
+	var card := CardData.new()
+	card.rules_text = "Deal 11 damage. 30% chance to KO."
+	t.check(CardTemplate.keywords_in(card).has(CardTemplate.KO_KEYWORD),
+		"KO in rules text registers as a keyword")
+	t.check_eq(CardTemplate.keyword_title(CardTemplate.KO_KEYWORD), "KO", "the keyword prints as KO")
+	t.check_eq(CardTemplate.keyword_description(CardTemplate.KO_KEYWORD),
+		KOChanceEffect.keyword_description(), "the tooltip body comes from the mechanic")
+
+	var bounded := CardData.new()
+	bounded.rules_text = "KICKOFF knockout."
+	t.check(not CardTemplate.keywords_in(bounded).has(CardTemplate.KO_KEYWORD),
+		"KO stays word-bounded -- never fires inside another word")
+
+	# The percentage is a chance, not damage: its sentence names KO, so the
+	# number stays plain. Exactly two coloured spans on the whole card: the
+	# damage number (red) and the KO keyword (yellow).
+	t.check_eq(CardTemplate.rules_bbcode(card).count("[color"), 2,
+		"the KO sentence's percentage is not coloured")

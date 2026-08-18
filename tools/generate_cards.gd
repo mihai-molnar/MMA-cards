@@ -24,8 +24,11 @@ func _initialize() -> void:
 	_save(_make_one_two())
 	_save(_make_strength_up())
 	_save(_make_prepared())
+	_save(_make_high_kick())
+	_save(_make_flying_knee())
+	_save(_make_elbow())
 
-	print("Generated 7 card resources in %s" % OUTPUT_DIR)
+	print("Generated 10 card resources in %s" % OUTPUT_DIR)
 	quit(0)
 
 func _save(card: CardData) -> void:
@@ -164,4 +167,68 @@ func _make_prepared() -> CardData:
 	delayed.turns = BattleConfig.PREPARED_STATUS_TURNS
 	delayed.target_self = true
 	card.effects = [guard, delayed] as Array[CardEffect]
+	return card
+
+func _make_high_kick() -> CardData:
+	var card := CardData.new()
+	card.id = &"high_kick"
+	card.display_name = "HIGH KICK"
+	card.cost = BattleConfig.HIGH_KICK_COST
+	card.tags = [&"kick", &"attack"] as Array[StringName]
+	# "KO" is a game-rule keyword like Combo and Burn: yellow and
+	# tooltip-explained (the only-when-it-deals-hp-damage rule lives in the
+	# tooltip, not here). The percentage is a chance, not damage --
+	# CardTemplate._number_color keeps it plain.
+	card.rules_text = "Deal %d damage. %d%% chance to KO." % [
+		BattleConfig.HIGH_KICK_DAMAGE, roundi(BattleConfig.HIGH_KICK_KO_CHANCE * 100.0)]
+	var damage := DamageEffect.new()
+	damage.amount = BattleConfig.HIGH_KICK_DAMAGE
+	var ko := KOChanceEffect.new()
+	ko.chance = BattleConfig.HIGH_KICK_KO_CHANCE
+	card.effects = [damage, ko] as Array[CardEffect]
+	return card
+
+func _make_flying_knee() -> CardData:
+	var card := CardData.new()
+	card.id = &"flying_knee"
+	card.display_name = "FLYING KNEE"
+	card.cost = BattleConfig.FLYING_KNEE_COST
+	# A knee reads as a kick impact, not a punch -- the kick tag picks the
+	# hit sound.
+	card.tags = [&"kick", &"attack"] as Array[StringName]
+	card.rules_text = "Deal %d damage. %d%% chance to KO." % [
+		BattleConfig.FLYING_KNEE_DAMAGE, roundi(BattleConfig.FLYING_KNEE_KO_CHANCE * 100.0)]
+	var damage := DamageEffect.new()
+	damage.amount = BattleConfig.FLYING_KNEE_DAMAGE
+	var ko := KOChanceEffect.new()
+	ko.chance = BattleConfig.FLYING_KNEE_KO_CHANCE
+	card.effects = [damage, ko] as Array[CardEffect]
+	return card
+
+func _make_elbow() -> CardData:
+	var card := CardData.new()
+	card.id = &"elbow"
+	card.display_name = "ELBOW"
+	card.cost = BattleConfig.ELBOW_COST
+	card.tags = [&"attack"] as Array[StringName]
+	# "Bleed" is a status keyword: the mechanics (damage per turn, guard
+	# piercing, the deals-damage-past-guard requirement) live in its tooltip.
+	card.rules_text = "Deal %d damage. %d%% chance to KO. %d%% chance to cause Bleed." % [
+		BattleConfig.ELBOW_DAMAGE, roundi(BattleConfig.ELBOW_KO_CHANCE * 100.0),
+		roundi(BattleConfig.ELBOW_BLEED_CHANCE * 100.0)]
+	var damage := DamageEffect.new()
+	damage.amount = BattleConfig.ELBOW_DAMAGE
+	var ko := KOChanceEffect.new()
+	ko.chance = BattleConfig.ELBOW_KO_CHANCE
+	var bleed := ApplyStatusEffect.new()
+	bleed.status_id = BleedStatus.ID
+	bleed.stacks = 1
+	bleed.turns = BattleConfig.BLEED_TURNS
+	bleed.target_self = false
+	# A second elbow keeps the cut open longer, not deeper.
+	bleed.extend_duration = true
+	# A fully blocked elbow cuts nothing -- same rule as Low Kick's injury.
+	bleed.require_hp_damage = true
+	bleed.chance = BattleConfig.ELBOW_BLEED_CHANCE
+	card.effects = [damage, ko, bleed] as Array[CardEffect]
 	return card

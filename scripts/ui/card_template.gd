@@ -239,12 +239,18 @@ const COMBO_KEYWORD: StringName = &"combo"
 ## the rule it describes.
 const BURN_KEYWORD: StringName = &"burn"
 
+## The KO mechanic's keyword id. Like Combo and Burn, a game-rule keyword
+## with no status behind it: the tooltip body lives on KOChanceEffect, in
+## core, beside the mechanic it describes.
+const KO_KEYWORD: StringName = &"ko"
+
 static func _keyword_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for id: StringName in StatusRegistry.DEFINITIONS:
 		ids.append(id)
 	ids.append(COMBO_KEYWORD)
 	ids.append(BURN_KEYWORD)
+	ids.append(KO_KEYWORD)
 	return ids
 
 ## The word printed on cards and as the tooltip's heading.
@@ -253,6 +259,8 @@ static func keyword_title(id: StringName) -> String:
 		return "Combo"
 	if id == BURN_KEYWORD:
 		return "Burn"
+	if id == KO_KEYWORD:
+		return "KO"
 	return StatusRegistry.display_name(id)
 
 ## The tooltip's body: statuses describe themselves via the registry; the
@@ -262,6 +270,8 @@ static func keyword_description(id: StringName) -> String:
 		return ComboRule.keyword_description()
 	if id == BURN_KEYWORD:
 		return Deck.burn_description()
+	if id == KO_KEYWORD:
+		return KOChanceEffect.keyword_description()
 	return StatusRegistry.description(id)
 
 ## Case-insensitive, word-bounded matcher for a keyword's display word. The
@@ -286,6 +296,10 @@ static func _number_color(text: String, at: int, fallback: Color) -> Variant:
 	for id: StringName in StatusRegistry.DEFINITIONS:
 		if _keyword_pattern(id).search(sentence) != null:
 			return null
+	# A sentence naming KO carries a chance percentage, not damage -- the
+	# number stays plain, exactly like a status duration.
+	if _keyword_pattern(KO_KEYWORD).search(sentence) != null:
+		return null
 	return fallback
 
 ## Word-bounded, case-insensitive substring test -- NOT String.contains(),

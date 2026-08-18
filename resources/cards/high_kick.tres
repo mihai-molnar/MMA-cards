@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/card_effect.gd" id="1_cniwe"]
+[ext_resource type="Script" path="res://scripts/core/effects/damage_effect.gd" id="2_v3yj1"]
+[ext_resource type="Script" path="res://scripts/core/effects/ko_chance_effect.gd" id="3_atb1n"]
+[ext_resource type="Script" path="res://scripts/core/card_data.gd" id="4_fpky6"]
+
+[sub_resource type="Resource" id="Resource_e1rx6"]
+script = ExtResource("2_v3yj1")
+amount = 11
+
+[sub_resource type="Resource" id="Resource_kdf24"]
+script = ExtResource("3_atb1n")
+chance = 0.3
+
+[resource]
+script = ExtResource("4_fpky6")
+id = &"high_kick"
+display_name = "HIGH KICK"
+cost = 3
+tags = Array[StringName]([&"kick", &"attack"])
+effects = Array[ExtResource("1_cniwe")]([SubResource("Resource_e1rx6"), SubResource("Resource_kdf24")])
+rules_text = "Deal 11 damage. 30% chance to KO."

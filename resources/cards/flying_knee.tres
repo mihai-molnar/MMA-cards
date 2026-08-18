@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="CardData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/card_effect.gd" id="1_aaocb"]
+[ext_resource type="Script" path="res://scripts/core/effects/damage_effect.gd" id="2_b2ex7"]
+[ext_resource type="Script" path="res://scripts/core/effects/ko_chance_effect.gd" id="3_y1r1w"]
+[ext_resource type="Script" path="res://scripts/core/card_data.gd" id="4_pvs14"]
+
+[sub_resource type="Resource" id="Resource_craeq"]
+script = ExtResource("2_b2ex7")
+amount = 8
+
+[sub_resource type="Resource" id="Resource_ure22"]
+script = ExtResource("3_y1r1w")
+chance = 0.2
+
+[resource]
+script = ExtResource("4_pvs14")
+id = &"flying_knee"
+display_name = "FLYING KNEE"
+cost = 2
+tags = Array[StringName]([&"kick", &"attack"])
+effects = Array[ExtResource("1_aaocb")]([SubResource("Resource_craeq"), SubResource("Resource_ure22")])
+rules_text = "Deal 8 damage. 20% chance to KO."
