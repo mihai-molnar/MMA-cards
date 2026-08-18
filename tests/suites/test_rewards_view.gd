@@ -10,11 +10,23 @@ func run(t: TestRunner) -> void:
 	_test_buttons_take_no_focus(t)
 
 func _test_reward_pool(t: TestRunner) -> void:
-	var options: Array[StringName] = RewardPool.options()
-	t.check_eq(options, BattleConfig.REWARD_CARDS, "the pool is the configured reward list")
-	options.append(&"tampered")
-	t.check_eq(RewardPool.options().size(), BattleConfig.REWARD_CARDS.size(),
-		"options() returns a copy -- callers cannot mutate the config")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var options: Array[StringName] = RewardPool.options(rng)
+	t.check_eq(options.size(), mini(RewardPool.OFFER_COUNT, BattleConfig.REWARD_CARDS.size()),
+		"an offer holds OFFER_COUNT cards (or the whole pool if smaller)")
+	for id: StringName in options:
+		t.check(BattleConfig.REWARD_CARDS.has(id), "%s comes from the configured pool" % id)
+	var seen: Dictionary = {}
+	for id: StringName in options:
+		seen[id] = true
+	t.check_eq(seen.size(), options.size(), "no duplicates in one offer")
+	var replay := RandomNumberGenerator.new()
+	replay.seed = 7
+	t.check_eq(RewardPool.options(replay), options, "same seed, same offer")
+	t.check_eq(RewardPool.options().size(),
+		mini(RewardPool.OFFER_COUNT, BattleConfig.REWARD_CARDS.size()),
+		"the no-argument game path offers the same count")
 
 func _test_open_builds_the_offer(t: TestRunner) -> void:
 	var view := RewardsView.new()
